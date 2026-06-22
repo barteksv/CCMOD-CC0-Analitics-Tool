@@ -3,7 +3,7 @@ Streamlit application for analysing Invisalign CCMod comments and CC0 instructio
 
 This app allows users to upload Excel files containing doctor comments
 or instructions, select analysis settings, define custom exclusion
-phrases and run analyses. Results are summarised in Polish, exported
+phrases and run analyses. Results are summarised in English, exported
 to styled Excel workbooks and made available for download individually
 or as a ZIP archive. Multiple files can be processed and compared.
 """
@@ -58,10 +58,10 @@ def build_excel_download(result: Any, mode: str) -> bytes:
 
 def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywords: Dict[str, List[str]]) -> Any:
     """Render editable row-level classifications and return a recalibrated result."""
-    st.subheader(f"Kalibracja klasyfikacji: {file_name}")
+    st.subheader(f"Classification calibration: {file_name}")
     st.caption(
-        "Popraw kategorie tematów, focus, złożoność lub flagę new plan na poziomie pojedynczych wierszy. "
-        "Po zmianie tabel agregaty i eksport są przeliczane na podstawie Twoich korekt."
+        "Adjust topic categories, focus, complexity, or the new-plan flag for individual rows. "
+        "After you edit the table, aggregates and exports are recalculated from your corrections."
     )
 
     row_df = result.row_level.copy()
@@ -91,7 +91,7 @@ def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywo
             "Multi-topic comment",
         ])
         column_config = {
-            "topics": st.column_config.TextColumn("Treatment categories (comma-separated)", help=f"Dostępne: {', '.join(topic_options)}"),
+            "topics": st.column_config.TextColumn("Treatment categories (comma-separated)", help=f"Available: {', '.join(topic_options)}"),
             "focus_type": st.column_config.SelectboxColumn("Focus", options=focus_options),
             "complexity": st.column_config.SelectboxColumn("Complexity", options=complexity_options),
             "new_plan_request": st.column_config.CheckboxColumn("New plan?"),
@@ -113,7 +113,7 @@ def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywo
     disabled_cols = [col for col in editable_cols if col in row_df.columns and col not in {"sections", "topics", "complexity"}]
     column_config = {
         "sections": st.column_config.TextColumn("Sections (comma-separated)"),
-        "topics": st.column_config.TextColumn("Treatment categories (comma-separated)", help=f"Dostępne: {', '.join(topic_options)}"),
+        "topics": st.column_config.TextColumn("Treatment categories (comma-separated)", help=f"Available: {', '.join(topic_options)}"),
         "complexity": st.column_config.SelectboxColumn("Complexity", options=complexity_options),
     }
     edited = st.data_editor(
@@ -127,87 +127,87 @@ def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywo
     return recalibrate_cc0_result(result, edited)
 
 def main():
-    st.set_page_config(page_title="Analiza komentarzy i instrukcji ClinCheck", layout="wide")
-    st.title("Analiza komentarzy i instrukcji ClinCheck")
+    st.set_page_config(page_title="ClinCheck Comment and Instruction Analysis", layout="wide")
+    st.title("ClinCheck Comment and Instruction Analysis")
     st.write(
-        "Wgraj jeden lub kilka plików Excel z komentarzami (CCMod) lub instrukcjami inicjalnymi (CC0) i uzyskaj kompleksową analizę."
+        "Upload one or more Excel files with comments (CCMod) or initial instructions (CC0) to generate a comprehensive analysis."
     )
 
     uploaded_files = st.file_uploader(
-        "Wybierz pliki Excel (.xlsx)", accept_multiple_files=True, type=["xlsx"]
+        "Select Excel files (.xlsx)", accept_multiple_files=True, type=["xlsx"]
     )
     if not uploaded_files:
-        st.info("Nie wgrano plików.")
+        st.info("No files uploaded.")
         return
 
     calibration_memory = load_calibration_memory()
     memory_stats = get_memory_stats(calibration_memory)
     st.info(
-        f"Pamięć kalibracji: {memory_stats['ccmod']} reguł tekstowych CCMod, "
-        f"{memory_stats['cc0']} reguł tekstowych CC0, "
-        f"{memory_stats['ccmod_global_rows']} globalnych reguł wierszy CCMod i "
-        f"{memory_stats['cc0_global_rows']} globalnych reguł wierszy CC0 i "
-        f"{memory_stats['custom_topics']} własnych kategorii Treatment Area Footprint. "
-        "Po zapisaniu korekty Treatment Area Footprint / kategorii leczenia ta sama pozycja wiersza "
-        "oraz identyczne oczyszczone sformułowanie będą kalibrowane w kolejnych analizach niezależnie od nazwy pliku."
+        f"Calibration memory: {memory_stats['ccmod']} CCMod text rules, "
+        f"{memory_stats['cc0']} CC0 text rules, "
+        f"{memory_stats['ccmod_global_rows']} CCMod global row rules, "
+        f"{memory_stats['cc0_global_rows']} CC0 global row rules, "
+        f"{memory_stats['custom_topics']} custom Treatment Area Footprint categories. "
+        "After saving a Treatment Area Footprint / treatment category correction, the same row position "
+        "and the identical cleaned phrase will be calibrated in future analyses regardless of the file name."
     )
 
 
-    with st.expander("Własne kategorie Treatment Area Footprint", expanded=False):
+    with st.expander("Custom Treatment Area Footprint categories", expanded=False):
         st.caption(
-            "Dodaj nową kategorię oraz słowa/frazy, po których aplikacja ma ją rozpoznawać "
-            "w CCMod i CC0. Frazy będą stosowane do wszystkich kolejnych analiz niezależnie od nazwy pliku."
+            "Add a new category and the words/phrases the app should use to recognize it "
+            "in CCMod and CC0. Phrases will be applied to all future analyses regardless of file name."
         )
         custom_topic_name = st.text_input(
-            "Nazwa nowej kategorii",
+            "New category name",
             key="custom_topic_name",
-            placeholder="np. posterior_crossbite",
+            placeholder="e.g. posterior_crossbite",
         )
         custom_topic_keywords = st.text_area(
-            "Słowa lub frazy rozpoznające kategorię (jedna na linię)",
+            "Words or phrases that identify the category (one per line)",
             key="custom_topic_keywords",
             height=100,
-            placeholder="np. crossbite\nzgryz krzyżowy",
+            placeholder="e.g. crossbite\nposterior crossbite",
         )
-        if st.button("Zapisz kategorię Treatment Area Footprint", key="save_custom_topic"):
+        if st.button("Save Treatment Area Footprint category", key="save_custom_topic"):
             memory = load_calibration_memory()
             added_keywords = remember_custom_topic(memory, custom_topic_name, parse_custom_phrases(custom_topic_keywords))
             if added_keywords:
                 save_calibration_memory(memory)
                 calibration_memory = memory
                 st.success(
-                    f"Zapisano kategorię '{custom_topic_name.strip()}' z {added_keywords} nowymi frazami. "
-                    "Będzie rozpoznawana w kolejnych analizach."
+                    f"Saved category '{custom_topic_name.strip()}' with {added_keywords} new phrases. "
+                    "It will be recognized in future analyses."
                 )
             else:
-                st.warning("Podaj nazwę kategorii i co najmniej jedną nową frazę rozpoznającą.")
+                st.warning("Enter a category name and at least one new recognition phrase.")
 
     topic_keywords = get_topic_keywords(calibration_memory)
 
     # Analysis mode selection
     analysis_mode = st.selectbox(
-        "Wybierz tryb analizy",
+        "Select analysis mode",
         ("Auto", "CCMod", "CC0"),
         index=0,
-        help="W trybie Auto aplikacja spróbuje automatycznie rozpoznać strukturę pliku."
+        help="In Auto mode, the app will try to detect the file structure automatically."
     )
     # Language selection (not used in classification but kept for future)
     language = st.selectbox(
-        "Wybierz język komentarzy/instrukcji",
+        "Select comment/instruction language",
         ("Auto", "French", "Spanish", "English", "Mixed"),
         index=0,
-        help="Analiza słów kluczowych jest niezależna od języka, ale możesz tutaj zaznaczyć dominujący język."
+        help="Keyword analysis is language-independent, but you can select the dominant language here."
     )
     # Custom exclusion phrases
-    st.write("Możesz dodać własne frazy do wykluczenia (jedna fraza na linię):")
-    custom_phrases_input = st.text_area("Frazy do wykluczenia", value="", height=150)
+    st.write("You can add custom exclusion phrases (one phrase per line):")
+    custom_phrases_input = st.text_area("Exclusion phrases", value="", height=150)
     custom_phrases = parse_custom_phrases(custom_phrases_input)
     # Row-level option
     include_full_rows = st.checkbox(
-        "Dołącz pełen eksport wierszy i kalibrację wszystkich rekordów (może spowolnić analizę przy bardzo dużych plikach)", value=True
+        "Include full row export and calibration for all records (may slow analysis for very large files)", value=True
     )
 
-    if st.button("Uruchom analizę"):
+    if st.button("Run analysis"):
         results = []
         file_names = []
         processed_file_names = []
@@ -226,7 +226,7 @@ def main():
             if mode == "auto":
                 mode = detect_analysis_mode(df)
                 if mode == "unknown":
-                    st.error(f"Nie można rozpoznać formatu pliku {file_name}. Upewnij się, że zawiera oczekiwane kolumny.")
+                    st.error(f"Cannot detect the file format for {file_name}. Make sure it contains the expected columns.")
                     continue
             elif mode == "ccmod":
                 # proceed as ccmod
@@ -238,7 +238,7 @@ def main():
             if mode == "ccmod":
                 comment_col, part_col, ccmod_col = detect_ccmod_columns(df)
                 if not comment_col or not ccmod_col:
-                    st.error(f"Plik {file_name} nie zawiera wymaganych kolumn komentarzy (np. 'COMMENT' lub 'H') i numeru CCMod (np. 'CCMod number' lub 'G').")
+                    st.error(f"File {file_name} does not contain the required comment columns (for example, 'COMMENT' or 'H') and CCMod number (for example, 'CCMod number' or 'G').")
                     continue
                 res = analyse_ccmod_dataframe(
                     df,
@@ -251,7 +251,7 @@ def main():
                 )
                 res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
                 if applied_rules:
-                    st.success(f"Zastosowano {applied_rules} zapamiętanych kalibracji dla {file_name}.")
+                    st.success(f"Applied {applied_rules} remembered calibrations for {file_name}.")
                 results.append(res)
                 processed_file_names.append(file_name)
                 # Generate Excel file in memory
@@ -262,7 +262,7 @@ def main():
             elif mode == "cc0":
                 instr_col = detect_cc0_instruction_column(df)
                 if not instr_col:
-                    st.error(f"Plik {file_name} nie zawiera kolumny z instrukcjami (np. 'Instruction' lub 'E').")
+                    st.error(f"File {file_name} does not contain an instruction column (for example, 'Instruction' or 'E').")
                     continue
                 res = analyse_cc0_dataframe(
                     df,
@@ -273,22 +273,22 @@ def main():
                 )
                 res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
                 if applied_rules:
-                    st.success(f"Zastosowano {applied_rules} zapamiętanych kalibracji dla {file_name}.")
+                    st.success(f"Applied {applied_rules} remembered calibrations for {file_name}.")
                 results.append(res)
                 processed_file_names.append(file_name)
                 downloads[file_name] = build_excel_download(res, mode)
                 result_modes[file_name] = mode
                 summaries[file_name] = generate_cc0_summary(file_name, res)
             else:
-                st.error(f"Nieobsługiwany tryb analizy dla pliku {file_name}.")
+                st.error(f"Unsupported analysis mode for file {file_name}.")
                 continue
         if not results:
-            st.warning("Brak wyników analizy do wyświetlenia.")
+            st.warning("No analysis results to display.")
             return
         st.session_state["analysis_results"] = dict(zip(processed_file_names, results))
         st.session_state["analysis_modes"] = result_modes
         # Display summaries and download links per file
-        st.header("Podsumowania plików")
+        st.header("File summaries")
         for fn in file_names:
             if fn in summaries:
                 st.subheader(fn)
@@ -296,7 +296,7 @@ def main():
                 # Provide download button
                 file_key = fn + "_download"
                 st.download_button(
-                    label=f"Pobierz wynik analiz dla {fn}",
+                    label=f"Download analysis result for {fn}",
                     data=downloads[fn],
                     file_name=f"analysis_{fn}",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -306,7 +306,7 @@ def main():
         if len(results) > 1:
             comp_df = summarise_results(results, processed_file_names)
             comp_summary = generate_comparison_summary(comp_df)
-            st.header("Porównanie wielu plików")
+            st.header("Multi-file comparison")
             st.markdown(comp_summary)
             # Show comparison table
             st.dataframe(comp_df)
@@ -317,36 +317,36 @@ def main():
                 for fn, data in downloads.items():
                     zipf.writestr(f"analysis_{fn}", data)
             st.download_button(
-                label="Pobierz wszystkie wyniki jako ZIP",
+                label="Download all results as ZIP",
                 data=zip_buffer.getvalue(),
-                file_name="analiza_wyniki.zip",
+                file_name="analysis_results.zip",
                 mime="application/zip",
             )
 
 
     if "analysis_results" in st.session_state and st.session_state["analysis_results"]:
-        st.header("Kalibracja po analizie")
+        st.header("Post-analysis calibration")
         st.write(
-            "Po wygenerowaniu analizy możesz ręcznie skorygować przypisanie tematów leczenia, focusu i złożoności. "
-            "To pomaga rozstrzygnąć przypadki graniczne, np. czy dana fraza powinna wejść w staging czy w tooth movements."
+            "After generating the analysis, you can manually correct treatment topic, focus, and complexity assignments. "
+            "This helps resolve borderline cases, such as whether a phrase belongs to staging or tooth movements."
         )
         calibrated_results: Dict[str, Any] = {}
         calibrated_downloads: Dict[str, bytes] = {}
         for fn, result in st.session_state["analysis_results"].items():
             mode = st.session_state["analysis_modes"].get(fn)
-            with st.expander(f"Skalibruj {fn}", expanded=False):
+            with st.expander(f"Calibrate {fn}", expanded=False):
                 calibrated = render_calibration_panel(fn, result, mode, topic_keywords)
                 updates = collect_memory_updates(result.row_level, calibrated.row_level, mode)
                 global_row_updates = collect_global_row_updates(result.row_level, calibrated.row_level, mode)
                 update_count = max(len(updates), len(global_row_updates))
                 if update_count:
                     st.warning(
-                        f"Wykryto {update_count} nowych zmian kalibracyjnych. "
-                        "Kliknij przycisk poniżej, aby zapamiętać je permanentnie dla identycznych tekstów "
-                        "i globalnie dla tych samych pozycji wierszy we wszystkich nowych analizach."
+                        f"Detected {update_count} new calibration changes. "
+                        "Click the button below to permanently remember them for identical texts "
+                        "and globally for the same row positions in all new analyses."
                     )
                 if st.button(
-                    "Zapisz tę kalibrację jako naukę na przyszłość",
+                    "Save this calibration as learning for the future",
                     key=f"remember_calibration_{fn}",
                     disabled=not bool(updates or global_row_updates),
                 ):
@@ -360,9 +360,9 @@ def main():
                             reapplied, _ = apply_calibration_memory(other_result, other_mode, memory)
                             st.session_state["analysis_results"][other_fn] = reapplied
                     st.success(
-                        f"Zapamiętano {saved_count} reguł. Będą użyte w kolejnych analizach "
-                        "identycznych sformułowań oraz globalnie dla tych samych pozycji wierszy, "
-                        "niezależnie od nazwy pliku."
+                        f"Remembered {saved_count} rules. They will be used in future analyses "
+                        "of identical phrases and globally for the same row positions, "
+                        "regardless of file name."
                     )
                 calibrated_results[fn] = calibrated
                 calibrated_downloads[fn] = build_excel_download(calibrated, mode)
@@ -371,14 +371,14 @@ def main():
                 elif mode == "cc0":
                     st.markdown(generate_cc0_summary(fn, calibrated))
                 st.download_button(
-                    label=f"Pobierz skalibrowany wynik dla {fn}",
+                    label=f"Download calibrated result for {fn}",
                     data=calibrated_downloads[fn],
                     file_name=f"calibrated_analysis_{fn}",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key=f"calibrated_download_{fn}",
                 )
         if len(calibrated_results) > 1:
-            st.subheader("Porównanie po kalibracji")
+            st.subheader("Comparison after calibration")
             calibrated_file_names = list(calibrated_results.keys())
             comp_df = summarise_results(list(calibrated_results.values()), calibrated_file_names)
             st.markdown(generate_comparison_summary(comp_df))
@@ -389,9 +389,9 @@ def main():
                 for fn, data in calibrated_downloads.items():
                     zipf.writestr(f"calibrated_analysis_{fn}", data)
             st.download_button(
-                label="Pobierz wszystkie skalibrowane wyniki jako ZIP",
+                label="Download all calibrated results as ZIP",
                 data=zip_buffer.getvalue(),
-                file_name="skalibrowane_wyniki.zip",
+                file_name="calibrated_results.zip",
                 mime="application/zip",
                 key="calibrated_zip_download",
             )
