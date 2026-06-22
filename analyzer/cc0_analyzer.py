@@ -46,6 +46,7 @@ def analyse_cc0_dataframe(
     instruction_col: str,
     exclusion_phrases: Optional[List[str]] = None,
     return_row_level: bool = True,
+    topic_keywords: Optional[Dict[str, List[str]]] = None,
 ) -> CC0AnalysisResult:
     """
     Analyse a DataFrame containing CC0 initial instructions.
@@ -55,6 +56,7 @@ def analyse_cc0_dataframe(
         instruction_col: Column name containing the raw instruction text.
         exclusion_phrases: Additional phrases to exclude from the text.
         return_row_level: Whether to return full row‑level classification.
+        topic_keywords: Topic-to-keywords mapping used for Treatment Area Footprint classification.
 
     Returns:
         A CC0AnalysisResult with aggregated statistics and tables.
@@ -78,7 +80,7 @@ def analyse_cc0_dataframe(
         # Sections detection based on original text (with labels)
         sections = detect_instruction_sections(original)
         # Topics detection on cleaned text
-        topics = classify_topics(cleaned_lower)
+        topics = classify_topics(cleaned_lower, topic_keywords=topic_keywords)
         # Complexity
         num_lines = count_lines(temp3)  # count lines after removing labels but before collapsing whitespace
         complexity = determine_cc0_complexity(len(cleaned), len(topics), len(sections), num_lines)

@@ -15,9 +15,10 @@ import pandas as pd
 
 from .cc0_analyzer import CC0AnalysisResult
 from .ccmod_analyzer import CCModAnalysisResult
+from .config import TOPIC_KEYWORDS
 
 CALIBRATION_MEMORY_PATH = Path("data/calibration_memory.json")
-MEMORY_VERSION = 1
+MEMORY_VERSION = 3
 
 
 def split_labels(value: object) -> List[str]:
@@ -37,12 +38,16 @@ def normalize_memory_text(value: object) -> str:
 def load_calibration_memory(path: Path = CALIBRATION_MEMORY_PATH) -> Dict[str, Any]:
     """Load persisted calibration overrides from disk."""
     if not path.exists():
-        return {"version": MEMORY_VERSION, "ccmod": {}, "cc0": {}}
+        return {"version": MEMORY_VERSION, "ccmod": {}, "cc0": {}, "global_rows": {"ccmod": {}, "cc0": {}}, "custom_topics": {}}
     with path.open("r", encoding="utf-8") as handle:
         memory = json.load(handle)
     memory.setdefault("version", MEMORY_VERSION)
     memory.setdefault("ccmod", {})
     memory.setdefault("cc0", {})
+    global_rows = memory.setdefault("global_rows", {})
+    global_rows.setdefault("ccmod", {})
+    global_rows.setdefault("cc0", {})
+    memory.setdefault("custom_topics", {})
     return memory
 
 
@@ -58,7 +63,48 @@ def get_memory_stats(memory: Dict[str, Any]) -> Dict[str, int]:
     return {
         "ccmod": len(memory.get("ccmod", {})),
         "cc0": len(memory.get("cc0", {})),
+        "ccmod_global_rows": len(memory.get("global_rows", {}).get("ccmod", {})),
+        "cc0_global_rows": len(memory.get("global_rows", {}).get("cc0", {})),
+        "custom_topics": len(memory.get("custom_topics", {})),
     }
+
+
+def get_topic_keywords(memory: Dict[str, Any] | None = None) -> Dict[str, List[str]]:
+    """Return built-in and user-learned Treatment Area Footprint keyword rules."""
+    topic_keywords = {topic: list(keywords) for topic, keywords in TOPIC_KEYWORDS.items()}
+    custom_topics = (memory or {}).get("custom_topics", {})
+    for topic, keywords in custom_topics.items():
+        cleaned_topic = str(topic).strip()
+        if not cleaned_topic:
+            continue
+        topic_keywords.setdefault(cleaned_topic, [])
+        for keyword in keywords or []:
+            cleaned_keyword = str(keyword).strip()
+            if cleaned_keyword and cleaned_keyword not in topic_keywords[cleaned_topic]:
+                topic_keywords[cleaned_topic].append(cleaned_keyword)
+    return topic_keywords
+
+
+def remember_custom_topic(memory: Dict[str, Any], topic: str, keywords: List[str]) -> int:
+    """Persist a custom Treatment Area Footprint category and its recognition keywords."""
+    cleaned_topic = str(topic).strip()
+    cleaned_keywords = []
+    for keyword in keywords:
+        cleaned_keyword = str(keyword).strip()
+        if cleaned_keyword and cleaned_keyword not in cleaned_keywords:
+            cleaned_keywords.append(cleaned_keyword)
+    if not cleaned_topic or not cleaned_keywords:
+        return 0
+
+    memory.setdefault("version", MEMORY_VERSION)
+    custom_topics = memory.setdefault("custom_topics", {})
+    existing_keywords = custom_topics.setdefault(cleaned_topic, [])
+    added = 0
+    for keyword in cleaned_keywords:
+        if keyword not in existing_keywords:
+            existing_keywords.append(keyword)
+            added += 1
+    return added
 
 
 def _value_counts(df: pd.DataFrame, column: str, name: str) -> pd.DataFrame:
@@ -147,16 +193,25 @@ def apply_calibration_memory(result: Any, mode: str, memory: Dict[str, Any]) -> 
         return result, 0
 
     mode_memory = memory.get(mode, {})
-    applied = 0
+    global_row_memory = memory.get("global_rows", {}).get(mode, {})
+    applied_keys = set()
     for idx, row in row_df.iterrows():
         key = normalize_memory_text(row.get(text_col))
-        override = mode_memory.get(key)
-        if not override:
-            continue
-        for column in _learned_columns(mode):
-            if column in row_df.columns and column in override:
-                row_df.at[idx, column] = override[column]
-        applied += 1
+        overrides = []
+        exact_override = mode_memory.get(key)
+        row_override = global_row_memory.get(str(idx))
+        if exact_override:
+            overrides.append(exact_override)
+            applied_keys.add(("exact", key))
+        if row_override:
+            overrides.append(row_override)
+            applied_keys.add(("row", str(idx)))
+        for override in overrides:
+            for column in _learned_columns(mode):
+                if column in row_df.columns and column in override:
+                    row_df.at[idx, column] = override[column]
+
+    applied = len(applied_keys)
 
     if mode == "ccmod":
         return recalibrate_ccmod_result(result, row_df), applied
@@ -190,14 +245,43 @@ def collect_memory_updates(original_rows: pd.DataFrame, edited_rows: pd.DataFram
     return updates
 
 
-def remember_calibration_updates(memory: Dict[str, Any], mode: str, updates: Dict[str, Dict[str, Any]]) -> int:
+def collect_global_row_updates(original_rows: pd.DataFrame, edited_rows: pd.DataFrame, mode: str) -> Dict[str, Dict[str, Any]]:
+    """Collect changed row-position overrides that apply to every future file in a mode."""
+    learned_columns = [col for col in _learned_columns(mode) if col in edited_rows.columns]
+    updates: Dict[str, Dict[str, Any]] = {}
+    for idx in edited_rows.index:
+        if idx not in original_rows.index:
+            continue
+        changed = False
+        payload: Dict[str, Any] = {}
+        for column in learned_columns:
+            edited_value = edited_rows.at[idx, column]
+            original_value = original_rows.at[idx, column] if column in original_rows.columns else None
+            payload[column] = _json_safe_value(edited_value)
+            if _json_safe_value(edited_value) != _json_safe_value(original_value):
+                changed = True
+        if changed:
+            updates[str(idx)] = payload
+    return updates
+
+
+def remember_calibration_updates(
+    memory: Dict[str, Any],
+    mode: str,
+    updates: Dict[str, Dict[str, Any]],
+    global_row_updates: Dict[str, Dict[str, Any]] | None = None,
+) -> int:
     """Merge calibration updates into memory and return the number of saved rules."""
-    if mode not in {"ccmod", "cc0"} or not updates:
+    if mode not in {"ccmod", "cc0"}:
         return 0
     memory.setdefault("version", MEMORY_VERSION)
-    mode_memory = memory.setdefault(mode, {})
-    mode_memory.update(updates)
-    return len(updates)
+    if updates:
+        mode_memory = memory.setdefault(mode, {})
+        mode_memory.update(updates)
+    if global_row_updates:
+        global_rows = memory.setdefault("global_rows", {}).setdefault(mode, {})
+        global_rows.update(global_row_updates)
+    return max(len(updates), len(global_row_updates or {}))
 
 
 def _json_safe_value(value: object) -> Any:
