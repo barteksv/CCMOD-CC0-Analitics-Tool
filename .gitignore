@@ -1,0 +1,2 @@
+# Local calibration memory can contain user-reviewed clinical text snippets.
+data/calibration_memory.json

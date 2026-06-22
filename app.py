@@ -9,20 +9,29 @@ or as a ZIP archive. Multiple files can be processed and compared.
 """
 
 import io
-import os
 import zipfile
-from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Any
 
 import pandas as pd
 import streamlit as st
 
-from analyzer.io_utils import load_excel, detect_ccmod_columns, detect_cc0_instruction_column, detect_analysis_mode
+from analyzer.io_utils import detect_ccmod_columns, detect_cc0_instruction_column, detect_analysis_mode
 from analyzer.ccmod_analyzer import analyse_ccmod_dataframe
 from analyzer.cc0_analyzer import analyse_cc0_dataframe
 from analyzer.comparison import summarise_results
 from analyzer.excel_export import export_ccmod_to_excel, export_cc0_to_excel
 from analyzer.summary_generator import generate_ccmod_summary, generate_cc0_summary, generate_comparison_summary
+from analyzer.calibration import (
+    apply_calibration_memory,
+    collect_memory_updates,
+    get_memory_stats,
+    load_calibration_memory,
+    recalibrate_cc0_result,
+    recalibrate_ccmod_result,
+    remember_calibration_updates,
+    save_calibration_memory,
+)
+from analyzer.config import TOPIC_KEYWORDS
 
 
 def parse_custom_phrases(text: str) -> List[str]:
@@ -31,6 +40,89 @@ def parse_custom_phrases(text: str) -> List[str]:
         return []
     return [line.strip() for line in text.split("\n") if line.strip()]
 
+
+
+def build_excel_download(result: Any, mode: str) -> bytes:
+    """Create an Excel workbook in memory for a CCMod or CC0 result."""
+    buffer = io.BytesIO()
+    if mode == "ccmod":
+        export_ccmod_to_excel(result, buffer)
+    elif mode == "cc0":
+        export_cc0_to_excel(result, buffer)
+    else:
+        raise ValueError(f"Unsupported analysis mode: {mode}")
+    return buffer.getvalue()
+
+
+def render_calibration_panel(file_name: str, result: Any, mode: str) -> Any:
+    """Render editable row-level classifications and return a recalibrated result."""
+    st.subheader(f"Kalibracja klasyfikacji: {file_name}")
+    st.caption(
+        "Popraw kategorie tematów, focus, złożoność lub flagę new plan na poziomie pojedynczych wierszy. "
+        "Po zmianie tabel agregaty i eksport są przeliczane na podstawie Twoich korekt."
+    )
+
+    row_df = result.row_level.copy()
+    topic_options = sorted(TOPIC_KEYWORDS.keys())
+    complexity_options = ["Empty", "Low", "Medium", "High"]
+
+    if mode == "ccmod":
+        editable_cols = [
+            "original_comment", "cleaned_comment", "topics", "focus_type",
+            "complexity", "new_plan_request", "clauses", "part_category", "ccmod_number",
+        ]
+        disabled_cols = [
+            col for col in editable_cols
+            if col in row_df.columns and col not in {"topics", "focus_type", "complexity", "new_plan_request"}
+        ]
+        focus_options = sorted(result.focus_counts["focus_type"].dropna().astype(str).unique().tolist() + [
+            "New treatment plan request",
+            "No clear treatment keyword",
+            "Only attachments",
+            "Attachments + other topics",
+            "Only IPR / separation / spacing",
+            "IPR / separation + other topics",
+            "Only tooth movements / alignment",
+            "Movements + other topics",
+            "Only staging / aligner count",
+            "Occlusion / bite / contacts",
+            "Multi-topic comment",
+        ])
+        column_config = {
+            "topics": st.column_config.TextColumn("Treatment categories (comma-separated)", help=f"Dostępne: {', '.join(topic_options)}"),
+            "focus_type": st.column_config.SelectboxColumn("Focus", options=focus_options),
+            "complexity": st.column_config.SelectboxColumn("Complexity", options=complexity_options),
+            "new_plan_request": st.column_config.CheckboxColumn("New plan?"),
+        }
+        edited = st.data_editor(
+            row_df[[col for col in editable_cols if col in row_df.columns]],
+            key=f"calibration_editor_{file_name}",
+            use_container_width=True,
+            hide_index=False,
+            disabled=disabled_cols,
+            column_config=column_config,
+        )
+        return recalibrate_ccmod_result(result, edited)
+
+    editable_cols = [
+        "original_instruction", "cleaned_instruction", "sections", "topics",
+        "complexity", "num_lines",
+    ]
+    disabled_cols = [col for col in editable_cols if col in row_df.columns and col not in {"sections", "topics", "complexity"}]
+    column_config = {
+        "sections": st.column_config.TextColumn("Sections (comma-separated)"),
+        "topics": st.column_config.TextColumn("Treatment categories (comma-separated)", help=f"Dostępne: {', '.join(topic_options)}"),
+        "complexity": st.column_config.SelectboxColumn("Complexity", options=complexity_options),
+    }
+    edited = st.data_editor(
+        row_df[[col for col in editable_cols if col in row_df.columns]],
+        key=f"calibration_editor_{file_name}",
+        use_container_width=True,
+        hide_index=False,
+        disabled=disabled_cols,
+        column_config=column_config,
+    )
+    return recalibrate_cc0_result(result, edited)
 
 def main():
     st.set_page_config(page_title="Analiza komentarzy i instrukcji ClinCheck", layout="wide")
@@ -45,6 +137,13 @@ def main():
     if not uploaded_files:
         st.info("Nie wgrano plików.")
         return
+
+    calibration_memory = load_calibration_memory()
+    memory_stats = get_memory_stats(calibration_memory)
+    st.info(
+        f"Pamięć kalibracji: {memory_stats['ccmod']} reguł CCMod i {memory_stats['cc0']} reguł CC0. "
+        "Jeśli poprawisz klasyfikację i zapiszesz ją jako naukę, identyczne oczyszczone sformułowania będą klasyfikowane tak samo w kolejnych analizach."
+    )
 
     # Analysis mode selection
     analysis_mode = st.selectbox(
@@ -66,14 +165,16 @@ def main():
     custom_phrases = parse_custom_phrases(custom_phrases_input)
     # Row-level option
     include_full_rows = st.checkbox(
-        "Dołącz pełen eksport wierszy (może spowolnić analizę przy bardzo dużych plikach)", value=False
+        "Dołącz pełen eksport wierszy i kalibrację wszystkich rekordów (może spowolnić analizę przy bardzo dużych plikach)", value=True
     )
 
     if st.button("Uruchom analizę"):
         results = []
         file_names = []
+        processed_file_names = []
         downloads: Dict[str, bytes] = {}
         summaries: Dict[str, str] = {}
+        result_modes: Dict[str, str] = {}
         for up_file in uploaded_files:
             file_name = up_file.name
             file_names.append(file_name)
@@ -108,11 +209,14 @@ def main():
                     exclusion_phrases=custom_phrases,
                     return_row_level=include_full_rows,
                 )
+                res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
+                if applied_rules:
+                    st.success(f"Zastosowano {applied_rules} zapamiętanych kalibracji dla {file_name}.")
                 results.append(res)
+                processed_file_names.append(file_name)
                 # Generate Excel file in memory
-                buffer = io.BytesIO()
-                export_ccmod_to_excel(res, buffer)
-                downloads[file_name] = buffer.getvalue()
+                downloads[file_name] = build_excel_download(res, mode)
+                result_modes[file_name] = mode
                 # Generate summary text
                 summaries[file_name] = generate_ccmod_summary(file_name, res)
             elif mode == "cc0":
@@ -126,10 +230,13 @@ def main():
                     exclusion_phrases=custom_phrases,
                     return_row_level=include_full_rows,
                 )
+                res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
+                if applied_rules:
+                    st.success(f"Zastosowano {applied_rules} zapamiętanych kalibracji dla {file_name}.")
                 results.append(res)
-                buffer = io.BytesIO()
-                export_cc0_to_excel(res, buffer)
-                downloads[file_name] = buffer.getvalue()
+                processed_file_names.append(file_name)
+                downloads[file_name] = build_excel_download(res, mode)
+                result_modes[file_name] = mode
                 summaries[file_name] = generate_cc0_summary(file_name, res)
             else:
                 st.error(f"Nieobsługiwany tryb analizy dla pliku {file_name}.")
@@ -137,6 +244,8 @@ def main():
         if not results:
             st.warning("Brak wyników analizy do wyświetlenia.")
             return
+        st.session_state["analysis_results"] = dict(zip(processed_file_names, results))
+        st.session_state["analysis_modes"] = result_modes
         # Display summaries and download links per file
         st.header("Podsumowania plików")
         for fn in file_names:
@@ -154,7 +263,7 @@ def main():
                 )
         # If multiple files, generate comparison summary and summary file
         if len(results) > 1:
-            comp_df = summarise_results(results, file_names)
+            comp_df = summarise_results(results, processed_file_names)
             comp_summary = generate_comparison_summary(comp_df)
             st.header("Porównanie wielu plików")
             st.markdown(comp_summary)
@@ -171,6 +280,67 @@ def main():
                 data=zip_buffer.getvalue(),
                 file_name="analiza_wyniki.zip",
                 mime="application/zip",
+            )
+
+
+    if "analysis_results" in st.session_state and st.session_state["analysis_results"]:
+        st.header("Kalibracja po analizie")
+        st.write(
+            "Po wygenerowaniu analizy możesz ręcznie skorygować przypisanie tematów leczenia, focusu i złożoności. "
+            "To pomaga rozstrzygnąć przypadki graniczne, np. czy dana fraza powinna wejść w staging czy w tooth movements."
+        )
+        calibrated_results: Dict[str, Any] = {}
+        calibrated_downloads: Dict[str, bytes] = {}
+        for fn, result in st.session_state["analysis_results"].items():
+            mode = st.session_state["analysis_modes"].get(fn)
+            with st.expander(f"Skalibruj {fn}", expanded=False):
+                calibrated = render_calibration_panel(fn, result, mode)
+                updates = collect_memory_updates(result.row_level, calibrated.row_level, mode)
+                if updates:
+                    st.warning(
+                        f"Wykryto {len(updates)} nowych zmian kalibracyjnych. "
+                        "Kliknij przycisk poniżej, aby zapamiętać je permanentnie."
+                    )
+                if st.button(
+                    "Zapisz tę kalibrację jako naukę na przyszłość",
+                    key=f"remember_calibration_{fn}",
+                    disabled=not bool(updates),
+                ):
+                    memory = load_calibration_memory()
+                    saved_count = remember_calibration_updates(memory, mode, updates)
+                    save_calibration_memory(memory)
+                    st.session_state["analysis_results"][fn] = calibrated
+                    st.success(f"Zapamiętano {saved_count} reguł. Będą użyte w kolejnych analizach identycznych sformułowań.")
+                calibrated_results[fn] = calibrated
+                calibrated_downloads[fn] = build_excel_download(calibrated, mode)
+                if mode == "ccmod":
+                    st.markdown(generate_ccmod_summary(fn, calibrated))
+                elif mode == "cc0":
+                    st.markdown(generate_cc0_summary(fn, calibrated))
+                st.download_button(
+                    label=f"Pobierz skalibrowany wynik dla {fn}",
+                    data=calibrated_downloads[fn],
+                    file_name=f"calibrated_analysis_{fn}",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"calibrated_download_{fn}",
+                )
+        if len(calibrated_results) > 1:
+            st.subheader("Porównanie po kalibracji")
+            calibrated_file_names = list(calibrated_results.keys())
+            comp_df = summarise_results(list(calibrated_results.values()), calibrated_file_names)
+            st.markdown(generate_comparison_summary(comp_df))
+            st.dataframe(comp_df)
+        if calibrated_downloads:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for fn, data in calibrated_downloads.items():
+                    zipf.writestr(f"calibrated_analysis_{fn}", data)
+            st.download_button(
+                label="Pobierz wszystkie skalibrowane wyniki jako ZIP",
+                data=zip_buffer.getvalue(),
+                file_name="skalibrowane_wyniki.zip",
+                mime="application/zip",
+                key="calibrated_zip_download",
             )
 
 
