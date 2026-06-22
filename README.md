@@ -12,7 +12,7 @@ This project provides a Streamlit web application that analyses Invisalign docto
 - **Detailed Metrics**: Calculate average comment lengths, topic distributions, complexity breakdowns, and detect requests for new treatment plans.
 - **Excel Exports**: Generate polished Excel workbooks with multiple tabs summarising your data. Tabs include summary, averages by categories, topic counts, complexity, top formulations and more.
 - **Comparison Across Files**: If you upload more than one file, the app will compare them and highlight key differences in length and topics.
-- **Polish Summaries**: Each analysis produces a human‑readable summary in Polish.
+- **English Summaries**: Each analysis produces a human‑readable summary in English.
 
 ## Installation
 
@@ -55,7 +55,7 @@ Then open your browser to the local URL shown in the console (typically `http://
 
 4. **Add Exclusion Phrases**: If there are boilerplate phrases unique to your data, enter them one per line. These will be removed from comments or instructions before analysis.
 
-5. **Run Analysis**: Click the **Uruchom analizę** button. Results will appear below for each file, along with download buttons for the Excel outputs.
+5. **Run Analysis**: Click the **Run analysis** button. Results will appear below for each file, along with download buttons for the Excel outputs.
 
 6. **Download Results**: You can download each file’s analysis separately or all results at once as a ZIP archive.
 
