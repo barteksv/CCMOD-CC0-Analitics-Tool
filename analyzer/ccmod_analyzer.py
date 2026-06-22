@@ -100,6 +100,7 @@ def analyse_ccmod_dataframe(
     ccmod_col: Optional[str],
     exclusion_phrases: Optional[List[str]] = None,
     return_row_level: bool = True,
+    topic_keywords: Optional[Dict[str, List[str]]] = None,
 ) -> CCModAnalysisResult:
     """
     Analyse a DataFrame containing CCMod comments.
@@ -111,6 +112,7 @@ def analyse_ccmod_dataframe(
         ccmod_col: Column name for CCMod number (may be None).
         exclusion_phrases: Additional phrases to exclude from comments.
         return_row_level: Whether to return the full row‑level classification.
+        topic_keywords: Topic-to-keywords mapping used for Treatment Area Footprint classification.
 
     Returns:
         A CCModAnalysisResult with aggregated statistics and tables.
@@ -142,7 +144,7 @@ def analyse_ccmod_dataframe(
         cleaned = normalize_whitespace(temp2)
         cleaned_lower = cleaned.lower()
         # Classify topics
-        topics = classify_topics(cleaned_lower)
+        topics = classify_topics(cleaned_lower, topic_keywords=topic_keywords)
         # New plan detection
         new_plan = detect_new_plan(cleaned_lower)
         # Clause count

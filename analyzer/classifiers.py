@@ -8,19 +8,20 @@ based on simple keyword matching using the configuration defined in
 analyzer.config.
 """
 
-from typing import List
+from typing import Dict, List, Optional
 
 from .config import TOPIC_KEYWORDS, NEW_PLAN_KEYWORDS, CCMOD_COMPLEXITY_THRESHOLDS, CC0_COMPLEXITY_THRESHOLDS
 from .text_cleaning import count_sentences, count_lines
 
 
-def classify_topics(text: str) -> List[str]:
+def classify_topics(text: str, topic_keywords: Optional[Dict[str, List[str]]] = None) -> List[str]:
     """
     Assign one or more topic labels to a cleaned text based on
     keyword matching.
 
     Args:
         text: The cleaned text to classify (lower‑casing is applied).
+        topic_keywords: Optional Treatment Area Footprint category-to-keywords mapping.
 
     Returns:
         A list of topic keys (as defined in config.TOPIC_KEYWORDS).
@@ -29,7 +30,8 @@ def classify_topics(text: str) -> List[str]:
         return []
     text_lower = text.lower()
     topics = []
-    for topic, keywords in TOPIC_KEYWORDS.items():
+    keyword_map = topic_keywords if topic_keywords is not None else TOPIC_KEYWORDS
+    for topic, keywords in keyword_map.items():
         for kw in keywords:
             if kw.lower() in text_lower:
                 topics.append(topic)

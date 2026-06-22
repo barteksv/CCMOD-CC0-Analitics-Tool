@@ -24,14 +24,16 @@ from analyzer.summary_generator import generate_ccmod_summary, generate_cc0_summ
 from analyzer.calibration import (
     apply_calibration_memory,
     collect_memory_updates,
+    collect_global_row_updates,
     get_memory_stats,
+    get_topic_keywords,
     load_calibration_memory,
     recalibrate_cc0_result,
     recalibrate_ccmod_result,
     remember_calibration_updates,
+    remember_custom_topic,
     save_calibration_memory,
 )
-from analyzer.config import TOPIC_KEYWORDS
 
 
 def parse_custom_phrases(text: str) -> List[str]:
@@ -54,7 +56,7 @@ def build_excel_download(result: Any, mode: str) -> bytes:
     return buffer.getvalue()
 
 
-def render_calibration_panel(file_name: str, result: Any, mode: str) -> Any:
+def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywords: Dict[str, List[str]]) -> Any:
     """Render editable row-level classifications and return a recalibrated result."""
     st.subheader(f"Kalibracja klasyfikacji: {file_name}")
     st.caption(
@@ -63,7 +65,7 @@ def render_calibration_panel(file_name: str, result: Any, mode: str) -> Any:
     )
 
     row_df = result.row_level.copy()
-    topic_options = sorted(TOPIC_KEYWORDS.keys())
+    topic_options = sorted(topic_keywords.keys())
     complexity_options = ["Empty", "Low", "Medium", "High"]
 
     if mode == "ccmod":
@@ -141,9 +143,46 @@ def main():
     calibration_memory = load_calibration_memory()
     memory_stats = get_memory_stats(calibration_memory)
     st.info(
-        f"Pamięć kalibracji: {memory_stats['ccmod']} reguł CCMod i {memory_stats['cc0']} reguł CC0. "
-        "Jeśli poprawisz klasyfikację i zapiszesz ją jako naukę, identyczne oczyszczone sformułowania będą klasyfikowane tak samo w kolejnych analizach."
+        f"Pamięć kalibracji: {memory_stats['ccmod']} reguł tekstowych CCMod, "
+        f"{memory_stats['cc0']} reguł tekstowych CC0, "
+        f"{memory_stats['ccmod_global_rows']} globalnych reguł wierszy CCMod i "
+        f"{memory_stats['cc0_global_rows']} globalnych reguł wierszy CC0 i "
+        f"{memory_stats['custom_topics']} własnych kategorii Treatment Area Footprint. "
+        "Po zapisaniu korekty Treatment Area Footprint / kategorii leczenia ta sama pozycja wiersza "
+        "oraz identyczne oczyszczone sformułowanie będą kalibrowane w kolejnych analizach niezależnie od nazwy pliku."
     )
+
+
+    with st.expander("Własne kategorie Treatment Area Footprint", expanded=False):
+        st.caption(
+            "Dodaj nową kategorię oraz słowa/frazy, po których aplikacja ma ją rozpoznawać "
+            "w CCMod i CC0. Frazy będą stosowane do wszystkich kolejnych analiz niezależnie od nazwy pliku."
+        )
+        custom_topic_name = st.text_input(
+            "Nazwa nowej kategorii",
+            key="custom_topic_name",
+            placeholder="np. posterior_crossbite",
+        )
+        custom_topic_keywords = st.text_area(
+            "Słowa lub frazy rozpoznające kategorię (jedna na linię)",
+            key="custom_topic_keywords",
+            height=100,
+            placeholder="np. crossbite\nzgryz krzyżowy",
+        )
+        if st.button("Zapisz kategorię Treatment Area Footprint", key="save_custom_topic"):
+            memory = load_calibration_memory()
+            added_keywords = remember_custom_topic(memory, custom_topic_name, parse_custom_phrases(custom_topic_keywords))
+            if added_keywords:
+                save_calibration_memory(memory)
+                calibration_memory = memory
+                st.success(
+                    f"Zapisano kategorię '{custom_topic_name.strip()}' z {added_keywords} nowymi frazami. "
+                    "Będzie rozpoznawana w kolejnych analizach."
+                )
+            else:
+                st.warning("Podaj nazwę kategorii i co najmniej jedną nową frazę rozpoznającą.")
+
+    topic_keywords = get_topic_keywords(calibration_memory)
 
     # Analysis mode selection
     analysis_mode = st.selectbox(
@@ -208,6 +247,7 @@ def main():
                     ccmod_col=ccmod_col,
                     exclusion_phrases=custom_phrases,
                     return_row_level=include_full_rows,
+                    topic_keywords=topic_keywords,
                 )
                 res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
                 if applied_rules:
@@ -229,6 +269,7 @@ def main():
                     instruction_col=instr_col,
                     exclusion_phrases=custom_phrases,
                     return_row_level=include_full_rows,
+                    topic_keywords=topic_keywords,
                 )
                 res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
                 if applied_rules:
@@ -294,23 +335,35 @@ def main():
         for fn, result in st.session_state["analysis_results"].items():
             mode = st.session_state["analysis_modes"].get(fn)
             with st.expander(f"Skalibruj {fn}", expanded=False):
-                calibrated = render_calibration_panel(fn, result, mode)
+                calibrated = render_calibration_panel(fn, result, mode, topic_keywords)
                 updates = collect_memory_updates(result.row_level, calibrated.row_level, mode)
-                if updates:
+                global_row_updates = collect_global_row_updates(result.row_level, calibrated.row_level, mode)
+                update_count = max(len(updates), len(global_row_updates))
+                if update_count:
                     st.warning(
-                        f"Wykryto {len(updates)} nowych zmian kalibracyjnych. "
-                        "Kliknij przycisk poniżej, aby zapamiętać je permanentnie."
+                        f"Wykryto {update_count} nowych zmian kalibracyjnych. "
+                        "Kliknij przycisk poniżej, aby zapamiętać je permanentnie dla identycznych tekstów "
+                        "i globalnie dla tych samych pozycji wierszy we wszystkich nowych analizach."
                     )
                 if st.button(
                     "Zapisz tę kalibrację jako naukę na przyszłość",
                     key=f"remember_calibration_{fn}",
-                    disabled=not bool(updates),
+                    disabled=not bool(updates or global_row_updates),
                 ):
                     memory = load_calibration_memory()
-                    saved_count = remember_calibration_updates(memory, mode, updates)
+                    saved_count = remember_calibration_updates(memory, mode, updates, global_row_updates)
                     save_calibration_memory(memory)
                     st.session_state["analysis_results"][fn] = calibrated
-                    st.success(f"Zapamiętano {saved_count} reguł. Będą użyte w kolejnych analizach identycznych sformułowań.")
+                    for other_fn, other_result in list(st.session_state["analysis_results"].items()):
+                        other_mode = st.session_state["analysis_modes"].get(other_fn)
+                        if other_mode == mode and other_fn != fn:
+                            reapplied, _ = apply_calibration_memory(other_result, other_mode, memory)
+                            st.session_state["analysis_results"][other_fn] = reapplied
+                    st.success(
+                        f"Zapamiętano {saved_count} reguł. Będą użyte w kolejnych analizach "
+                        "identycznych sformułowań oraz globalnie dla tych samych pozycji wierszy, "
+                        "niezależnie od nazwy pliku."
+                    )
                 calibrated_results[fn] = calibrated
                 calibrated_downloads[fn] = build_excel_download(calibrated, mode)
                 if mode == "ccmod":
