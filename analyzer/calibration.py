@@ -18,7 +18,50 @@ from .ccmod_analyzer import CCModAnalysisResult
 from .config import TOPIC_KEYWORDS
 
 CALIBRATION_MEMORY_PATH = Path("data/calibration_memory.json")
+DEFAULT_CALIBRATION_MEMORY_PATH = Path("data/default_calibration_memory.json")
 MEMORY_VERSION = 3
+
+
+def _empty_calibration_memory() -> Dict[str, Any]:
+    """Return the canonical empty calibration-memory structure."""
+    return {
+        "version": MEMORY_VERSION,
+        "ccmod": {},
+        "cc0": {},
+        "global_rows": {"ccmod": {}, "cc0": {}},
+        "custom_topics": {},
+    }
+
+
+def _normalise_calibration_memory(memory: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure a loaded memory dict has all expected top-level sections."""
+    memory.setdefault("version", MEMORY_VERSION)
+    memory.setdefault("ccmod", {})
+    memory.setdefault("cc0", {})
+    global_rows = memory.setdefault("global_rows", {})
+    global_rows.setdefault("ccmod", {})
+    global_rows.setdefault("cc0", {})
+    memory.setdefault("custom_topics", {})
+    return memory
+
+
+def _merge_calibration_memory(
+    base: Dict[str, Any], overrides: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge saved calibration memory, letting overrides win over base defaults."""
+    merged = _normalise_calibration_memory(json.loads(json.dumps(base)))
+    overrides = _normalise_calibration_memory(overrides)
+    merged["version"] = max(
+        int(merged.get("version", MEMORY_VERSION)),
+        int(overrides.get("version", MEMORY_VERSION)),
+    )
+    for section in ("ccmod", "cc0", "custom_topics"):
+        merged.setdefault(section, {}).update(overrides.get(section, {}))
+    merged_rows = merged.setdefault("global_rows", {"ccmod": {}, "cc0": {}})
+    override_rows = overrides.get("global_rows", {})
+    for mode in ("ccmod", "cc0"):
+        merged_rows.setdefault(mode, {}).update(override_rows.get(mode, {}))
+    return merged
 
 
 def split_labels(value: object) -> List[str]:
@@ -35,23 +78,24 @@ def normalize_memory_text(value: object) -> str:
     return " ".join(str(value).lower().split())
 
 
-def load_calibration_memory(path: Path = CALIBRATION_MEMORY_PATH) -> Dict[str, Any]:
-    """Load persisted calibration overrides from disk."""
-    if not path.exists():
-        return {"version": MEMORY_VERSION, "ccmod": {}, "cc0": {}, "global_rows": {"ccmod": {}, "cc0": {}}, "custom_topics": {}}
-    with path.open("r", encoding="utf-8") as handle:
-        memory = json.load(handle)
-    memory.setdefault("version", MEMORY_VERSION)
-    memory.setdefault("ccmod", {})
-    memory.setdefault("cc0", {})
-    global_rows = memory.setdefault("global_rows", {})
-    global_rows.setdefault("ccmod", {})
-    global_rows.setdefault("cc0", {})
-    memory.setdefault("custom_topics", {})
-    return memory
+def load_calibration_memory(
+    path: Path = CALIBRATION_MEMORY_PATH,
+    default_path: Path = DEFAULT_CALIBRATION_MEMORY_PATH,
+) -> Dict[str, Any]:
+    """Load bundled defaults plus persisted local calibration overrides from disk."""
+    memory = _empty_calibration_memory()
+    if default_path.exists():
+        with default_path.open("r", encoding="utf-8") as handle:
+            memory = _merge_calibration_memory(memory, json.load(handle))
+    if path.exists():
+        with path.open("r", encoding="utf-8") as handle:
+            memory = _merge_calibration_memory(memory, json.load(handle))
+    return _normalise_calibration_memory(memory)
 
 
-def save_calibration_memory(memory: Dict[str, Any], path: Path = CALIBRATION_MEMORY_PATH) -> None:
+def save_calibration_memory(
+    memory: Dict[str, Any], path: Path = CALIBRATION_MEMORY_PATH
+) -> None:
     """Persist calibration overrides to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
@@ -71,7 +115,9 @@ def get_memory_stats(memory: Dict[str, Any]) -> Dict[str, int]:
 
 def get_topic_keywords(memory: Dict[str, Any] | None = None) -> Dict[str, List[str]]:
     """Return built-in and user-learned Treatment Area Footprint keyword rules."""
-    topic_keywords = {topic: list(keywords) for topic, keywords in TOPIC_KEYWORDS.items()}
+    topic_keywords = {
+        topic: list(keywords) for topic, keywords in TOPIC_KEYWORDS.items()
+    }
     custom_topics = (memory or {}).get("custom_topics", {})
     for topic, keywords in custom_topics.items():
         cleaned_topic = str(topic).strip()
@@ -85,7 +131,9 @@ def get_topic_keywords(memory: Dict[str, Any] | None = None) -> Dict[str, List[s
     return topic_keywords
 
 
-def remember_custom_topic(memory: Dict[str, Any], topic: str, keywords: List[str]) -> int:
+def remember_custom_topic(
+    memory: Dict[str, Any], topic: str, keywords: List[str]
+) -> int:
     """Persist a custom Treatment Area Footprint category and its recognition keywords."""
     cleaned_topic = str(topic).strip()
     cleaned_keywords = []
@@ -120,7 +168,9 @@ def _topic_counts(row_df: pd.DataFrame) -> pd.DataFrame:
     return topic_counts
 
 
-def recalibrate_ccmod_result(result: CCModAnalysisResult, edited_rows: pd.DataFrame) -> CCModAnalysisResult:
+def recalibrate_ccmod_result(
+    result: CCModAnalysisResult, edited_rows: pd.DataFrame
+) -> CCModAnalysisResult:
     """Return a CCMod result whose aggregates are rebuilt from edited rows."""
     row_df = edited_rows.copy()
     if "topics" in row_df.columns:
@@ -129,9 +179,21 @@ def recalibrate_ccmod_result(result: CCModAnalysisResult, edited_rows: pd.DataFr
         row_df["topics_list"] = [[] for _ in range(len(row_df))]
 
     topic_counts = _topic_counts(row_df)
-    focus_counts = _value_counts(row_df, "focus_type", "focus_type") if "focus_type" in row_df.columns else result.focus_counts
-    complexity_counts = _value_counts(row_df, "complexity", "complexity") if "complexity" in row_df.columns else result.complexity_counts
-    new_plan_counts = _value_counts(row_df, "new_plan_request", "new_plan") if "new_plan_request" in row_df.columns else result.new_plan_counts
+    focus_counts = (
+        _value_counts(row_df, "focus_type", "focus_type")
+        if "focus_type" in row_df.columns
+        else result.focus_counts
+    )
+    complexity_counts = (
+        _value_counts(row_df, "complexity", "complexity")
+        if "complexity" in row_df.columns
+        else result.complexity_counts
+    )
+    new_plan_counts = (
+        _value_counts(row_df, "new_plan_request", "new_plan")
+        if "new_plan_request" in row_df.columns
+        else result.new_plan_counts
+    )
 
     return replace(
         result,
@@ -143,7 +205,9 @@ def recalibrate_ccmod_result(result: CCModAnalysisResult, edited_rows: pd.DataFr
     )
 
 
-def recalibrate_cc0_result(result: CC0AnalysisResult, edited_rows: pd.DataFrame) -> CC0AnalysisResult:
+def recalibrate_cc0_result(
+    result: CC0AnalysisResult, edited_rows: pd.DataFrame
+) -> CC0AnalysisResult:
     """Return a CC0 result whose aggregates are rebuilt from edited rows."""
     row_df = edited_rows.copy()
     if "topics" in row_df.columns:
@@ -157,11 +221,17 @@ def recalibrate_cc0_result(result: CC0AnalysisResult, edited_rows: pd.DataFrame)
 
     topic_counts = _topic_counts(row_df)
 
-    sections_flat = [section for sections in row_df["sections_list"] for section in sections]
+    sections_flat = [
+        section for sections in row_df["sections_list"] for section in sections
+    ]
     sections_count = pd.Series(sections_flat).value_counts().reset_index()
     sections_count.columns = ["section", "count"]
 
-    complexity_counts = _value_counts(row_df, "complexity", "complexity") if "complexity" in row_df.columns else result.complexity_counts
+    complexity_counts = (
+        _value_counts(row_df, "complexity", "complexity")
+        if "complexity" in row_df.columns
+        else result.complexity_counts
+    )
 
     return replace(
         result,
@@ -182,7 +252,9 @@ def _learned_columns(mode: str) -> List[str]:
     return ["sections", "topics", "complexity"]
 
 
-def apply_calibration_memory(result: Any, mode: str, memory: Dict[str, Any]) -> Tuple[Any, int]:
+def apply_calibration_memory(
+    result: Any, mode: str, memory: Dict[str, Any]
+) -> Tuple[Any, int]:
     """Apply remembered exact-text overrides to a result and rebuild aggregates."""
     if mode not in {"ccmod", "cc0"}:
         return result, 0
@@ -218,10 +290,14 @@ def apply_calibration_memory(result: Any, mode: str, memory: Dict[str, Any]) -> 
     return recalibrate_cc0_result(result, row_df), applied
 
 
-def collect_memory_updates(original_rows: pd.DataFrame, edited_rows: pd.DataFrame, mode: str) -> Dict[str, Dict[str, Any]]:
+def collect_memory_updates(
+    original_rows: pd.DataFrame, edited_rows: pd.DataFrame, mode: str
+) -> Dict[str, Dict[str, Any]]:
     """Collect changed calibration fields as exact-text memory updates."""
     text_col = _memory_text_column(mode)
-    learned_columns = [col for col in _learned_columns(mode) if col in edited_rows.columns]
+    learned_columns = [
+        col for col in _learned_columns(mode) if col in edited_rows.columns
+    ]
     if text_col not in original_rows.columns or text_col not in edited_rows.columns:
         return {}
 
@@ -236,7 +312,11 @@ def collect_memory_updates(original_rows: pd.DataFrame, edited_rows: pd.DataFram
         payload: Dict[str, Any] = {}
         for column in learned_columns:
             edited_value = edited_rows.at[idx, column]
-            original_value = original_rows.at[idx, column] if column in original_rows.columns else None
+            original_value = (
+                original_rows.at[idx, column]
+                if column in original_rows.columns
+                else None
+            )
             payload[column] = _json_safe_value(edited_value)
             if _json_safe_value(edited_value) != _json_safe_value(original_value):
                 changed = True
@@ -245,9 +325,13 @@ def collect_memory_updates(original_rows: pd.DataFrame, edited_rows: pd.DataFram
     return updates
 
 
-def collect_global_row_updates(original_rows: pd.DataFrame, edited_rows: pd.DataFrame, mode: str) -> Dict[str, Dict[str, Any]]:
+def collect_global_row_updates(
+    original_rows: pd.DataFrame, edited_rows: pd.DataFrame, mode: str
+) -> Dict[str, Dict[str, Any]]:
     """Collect changed row-position overrides that apply to every future file in a mode."""
-    learned_columns = [col for col in _learned_columns(mode) if col in edited_rows.columns]
+    learned_columns = [
+        col for col in _learned_columns(mode) if col in edited_rows.columns
+    ]
     updates: Dict[str, Dict[str, Any]] = {}
     for idx in edited_rows.index:
         if idx not in original_rows.index:
@@ -256,7 +340,11 @@ def collect_global_row_updates(original_rows: pd.DataFrame, edited_rows: pd.Data
         payload: Dict[str, Any] = {}
         for column in learned_columns:
             edited_value = edited_rows.at[idx, column]
-            original_value = original_rows.at[idx, column] if column in original_rows.columns else None
+            original_value = (
+                original_rows.at[idx, column]
+                if column in original_rows.columns
+                else None
+            )
             payload[column] = _json_safe_value(edited_value)
             if _json_safe_value(edited_value) != _json_safe_value(original_value):
                 changed = True
