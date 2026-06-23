@@ -1,4 +1,8 @@
 pandas
+numpy
 openpyxl
 xlsxwriter
 streamlit
+plotly
+rapidfuzz
+pytest

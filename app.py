@@ -21,6 +21,7 @@ from analyzer.cc0_analyzer import analyse_cc0_dataframe
 from analyzer.comparison import summarise_results
 from analyzer.excel_export import export_ccmod_to_excel, export_cc0_to_excel
 from analyzer.summary_generator import generate_ccmod_summary, generate_cc0_summary, generate_comparison_summary
+from pages.doctor_pattern_analysis import render_doctor_pattern_analysis
 from analyzer.calibration import (
     apply_calibration_memory,
     collect_memory_updates,
@@ -129,6 +130,10 @@ def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywo
 def main():
     st.set_page_config(page_title="ClinCheck Comment and Instruction Analysis", layout="wide")
     st.title("ClinCheck Comment and Instruction Analysis")
+    app_section = st.sidebar.radio("Analysis workspace", ("Existing CCMod/CC0 Analysis", "Doctor Pattern Analysis"))
+    if app_section == "Doctor Pattern Analysis":
+        render_doctor_pattern_analysis()
+        return
     st.write(
         "Upload one or more Excel files with comments (CCMod) or initial instructions (CC0) to generate a comprehensive analysis."
     )
