@@ -127,13 +127,9 @@ def render_calibration_panel(file_name: str, result: Any, mode: str, topic_keywo
     )
     return recalibrate_cc0_result(result, edited)
 
-def main():
-    st.set_page_config(page_title="ClinCheck Comment and Instruction Analysis", layout="wide")
-    st.title("ClinCheck Comment and Instruction Analysis")
-    app_section = st.sidebar.radio("Analysis workspace", ("Existing CCMod/CC0 Analysis", "Doctor Pattern Analysis"))
-    if app_section == "Doctor Pattern Analysis":
-        render_doctor_pattern_analysis()
-        return
+def render_existing_analysis():
+    """Render the existing CCMod/CC0 analysis workspace."""
+    st.header("Existing CCMod/CC0 Analysis")
     st.write(
         "Upload one or more Excel files with comments (CCMod) or initial instructions (CC0) to generate a comprehensive analysis."
     )
@@ -400,6 +396,21 @@ def main():
                 mime="application/zip",
                 key="calibrated_zip_download",
             )
+
+
+def main():
+    st.set_page_config(page_title="ClinCheck Comment and Instruction Analysis", layout="wide")
+    st.title("ClinCheck Comment and Instruction Analysis")
+
+    analysis_tab, doctor_pattern_tab = st.tabs([
+        "Existing CCMod/CC0 Analysis",
+        "Doctor Pattern Analysis",
+    ])
+
+    with analysis_tab:
+        render_existing_analysis()
+    with doctor_pattern_tab:
+        render_doctor_pattern_analysis()
 
 
 if __name__ == "__main__":
