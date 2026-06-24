@@ -70,12 +70,12 @@ DOCTOR_PATTERN_TAB_GUIDES = {
     "Executive Summary": (
         "This page gives a management-level overview of the uploaded CC0 and CCMod relationship. "
         "It starts with coverage metrics, then lists the highest-priority rule-based findings, data-quality checks, "
-        "and a chart of the most frequent request categories.",
+        "and a chart of the most frequent request categories based on cleared CCMod comments.",
         {
             "CC0 rows": "Number of rows read from the initial-instruction workbook.",
             "unique CC0 SO": "Distinct order identifiers found in the CC0 file.",
             "CCMod rows": "Number of rows read from the modification-comment workbook before cleaning.",
-            "usable CCMod comments after cleaning": "CCMod comments that still contain analyzable text after boilerplate removal.",
+            "usable cleared CCMod comments after cleaning": "Cleared CCMod comments that still contain analyzable text after boilerplate removal.",
             "matched modified orders": "Orders present in both uploaded datasets.",
             "SO without CCMod in uploaded data": "CC0 orders that have no matching CCMod row in the uploaded CCMod file; this is not an acceptance/success flag.",
             "percentage reaching CCMod 2+/3+": "Share of modified orders that reached at least the indicated modification iteration.",
@@ -83,15 +83,15 @@ DOCTOR_PATTERN_TAB_GUIDES = {
         },
     ),
     "Frequent Requests": (
-        "This page groups cleaned CCMod comments into clinical request categories and shows which requests recur most often. "
-        "It also exposes exact repeated comments and similar-comment clusters so users can see whether the same wording or request pattern is driving the result.",
+        "This page groups cleared CCMod comments into clinical request categories and shows which requests recur most often. "
+        "It also exposes exact repeated cleared comments and similar-comment clusters based on cleared comments so users can see whether the same wording or request pattern is driving the result.",
         {
             "category": "Rule-based clinical request bucket detected from keywords, such as IPR, attachments, staging, expansion, or occlusion.",
-            "comment_count": "Number of usable CCMod comments assigned to the category.",
+            "comment_count": "Number of usable cleared CCMod comments assigned to the category.",
             "unique_order_count": "Number of distinct orders that contain the category.",
             "pct_usable_comments": "Category comments divided by all usable cleaned CCMod comments.",
-            "pct_modified_orders": "Orders with the category divided by all orders that have usable CCMod comments.",
-            "representative_original_comment": "One original source comment representing an exact normalized repeated text.",
+            "pct_modified_orders": "Orders with the category divided by all orders that have usable cleared CCMod comments.",
+            "representative_cleared_comment": "One cleared comment representing an exact normalized repeated text.",
             "total_occurrences": "How often the normalized exact comment appears.",
         },
     ),
@@ -127,7 +127,7 @@ DOCTOR_PATTERN_TAB_GUIDES = {
         "and comment length differ between Primary, Secondary, or unknown part categories.",
         {
             "part_category_normalized": "Case type normalized from the mapped part_category column; usually Primary, Secondary, or Unknown.",
-            "comment_count": "Number of categorized usable CCMod comments in the case-type group.",
+            "comment_count": "Number of categorized usable cleared CCMod comments in the case-type group.",
             "unique_orders": "Distinct orders represented in the case-type group.",
             "avg_comment_length": "Average cleaned CCMod comment length for the group.",
             "median_comment_length": "Median cleaned CCMod comment length for the group.",
@@ -272,8 +272,8 @@ def render_doctor_pattern_analysis():
     with tabs[1]:
         _render_tab_guide("Frequent Requests", *DOCTOR_PATTERN_TAB_GUIDES["Frequent Requests"])
         df=res['frequent_requests']; st.dataframe(view_df(df), use_container_width=True)
-        st.subheader("Exact Repeated Comments"); st.dataframe(view_df(res['exact_comments']), use_container_width=True)
-        st.subheader("Similar Comment Clusters"); st.dataframe(view_df(res['similar_comment_clusters']), use_container_width=True)
+        st.subheader("Exact Repeated Cleared Comments"); st.dataframe(view_df(res['exact_comments']), use_container_width=True)
+        st.subheader("Similar Cleared Comment Clusters"); st.dataframe(view_df(res['similar_comment_clusters']), use_container_width=True)
     with tabs[2]:
         _render_tab_guide("CC0 vs CCMod", *DOCTOR_PATTERN_TAB_GUIDES["CC0 vs CCMod"])
         _render_variable_glossary(expanded=False, key_suffix="cc0_vs_ccmod")
