@@ -215,6 +215,7 @@ def render_doctor_pattern_analysis():
         st.write(pd.DataFrame({"active_exclusion":active}))
     with st.expander("Advanced Settings"):
         duplicate_policy=st.selectbox("Duplicate handling", ["exclude_duplicate_clinical","keep_all_rows","exclude_exact_source_duplicates"], index=0)
+        exclude_clinical_preferences=st.radio("Exclude Clinical Preferences?", ["No","Yes"], index=0, horizontal=True, help="Yes: for CC0 files, ignore everything from [PreferenceInstrucions:] / [PreferenceInstructions:] onward.")=="Yes"
         weights={k:st.number_input(k, value=float(v), min_value=0.0, max_value=1.0, step=.05) for k,v in DEFAULT_FINDING_WEIGHTS.items()}
         show_ids=st.checkbox("Show order identifiers in report", value=True)
     errors=[]
@@ -227,7 +228,7 @@ def render_doctor_pattern_analysis():
     if errors: return
     if st.button("Run Pattern Analysis", type='primary'):
         with st.spinner("Running rule-based sequence analysis..."):
-            res=analyze_doctor_patterns(cc0_df, ccmod_df, {'order':cc0_order,'instruction':cc0_instruction}, {'order':cm_order,'ccmod_number':cm_num,'comment':cm_comment,'pid':cm_pid,'part_category':cm_part,'complete_time':cm_time,'doctor_id':cm_doc}, active, duplicate_policy, weights)
+            res=analyze_doctor_patterns(cc0_df, ccmod_df, {'order':cc0_order,'instruction':cc0_instruction}, {'order':cm_order,'ccmod_number':cm_num,'comment':cm_comment,'pid':cm_pid,'part_category':cm_part,'complete_time':cm_time,'doctor_id':cm_doc}, active, duplicate_policy, weights, exclude_clinical_preferences)
         st.session_state['doctor_pattern_result']=res
         st.session_state['doctor_pattern_show_ids']=show_ids
     res=st.session_state.get('doctor_pattern_result')

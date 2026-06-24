@@ -12,6 +12,8 @@ except Exception:
     fuzz = None
 from config.doctor_pattern_rules import ALL_CATEGORIES, CATEGORY_KEYWORDS, DEFAULT_EXCLUSIONS, DEFAULT_FINDING_WEIGHTS
 
+PREFERENCE_MARKER_RE = re.compile(r"\[\s*PreferenceInstruc(?:tions|ions)\s*:\s*\]", re.I)
+
 ALIASES = {
     "order": ["SO","so","Sales Order","SalesOrder","Order Number","order_number","OrderNumber","order number"],
     "instruction": ["Instruction","Instructions","Doctor Instruction","Doctor Instructions","CC0 Instruction","Initial Instruction","Comments","Comment"],
@@ -92,8 +94,12 @@ def clean_text(text: Any, exclusions: Iterable[str]=DEFAULT_EXCLUSIONS) -> Tuple
     cleaned=re.sub(r"\s+", " ", accent_clean).strip()
     return cleaned, audit
 
-def split_cc0_sections(text: Any) -> Dict[str,str]:
+def split_cc0_sections(text: Any, exclude_preferences: bool=False) -> Dict[str,str]:
     full="" if text is None or (isinstance(text,float) and np.isnan(text)) else str(text)
+    if exclude_preferences:
+        marker = PREFERENCE_MARKER_RE.search(full)
+        if marker:
+            full = full[:marker.start()]
     labels=list(re.finditer(r"\[([^\]]+):?\]", full))
     out={"cc0_full_instruction": full, "cc0_case_specific_instruction":"", "cc0_preference_instruction":"", "cc0_upper_arch_instruction":"", "cc0_lower_arch_instruction":"", "cc0_other_instruction":""}
     if not labels:
@@ -155,11 +161,11 @@ def _val_signature(row):
     for k,v in acts.items(): pieces.append(f"{k}:{v}")
     return "|".join(pieces) or normalize_text_for_matching(row.get('analysis_text',''))
 
-def analyze_doctor_patterns(cc0_df: pd.DataFrame, ccmod_df: pd.DataFrame, cc0_mapping: Dict[str,str], ccmod_mapping: Dict[str,Optional[str]], exclusions: Optional[List[str]]=None, duplicate_policy: str="exclude_duplicate_clinical", finding_weights: Optional[Dict[str,float]]=None) -> Dict[str,pd.DataFrame]:
+def analyze_doctor_patterns(cc0_df: pd.DataFrame, ccmod_df: pd.DataFrame, cc0_mapping: Dict[str,str], ccmod_mapping: Dict[str,Optional[str]], exclusions: Optional[List[str]]=None, duplicate_policy: str="exclude_duplicate_clinical", finding_weights: Optional[Dict[str,float]]=None, exclude_preferences: bool=False) -> Dict[str,pd.DataFrame]:
     exclusions=exclusions if exclusions is not None else DEFAULT_EXCLUSIONS; weights=finding_weights or DEFAULT_FINDING_WEIGHTS
     cc0=cc0_df.copy(); ccmod=ccmod_df.copy(); cc0['_source_row']=np.arange(len(cc0))+2; ccmod['_source_row']=np.arange(len(ccmod))+2
     cc0['cc0_order_key']=cc0[cc0_mapping['order']].map(normalize_order_id); cc0['cc0_full_instruction']=cc0[cc0_mapping['instruction']].fillna('').astype(str)
-    sections=cc0['cc0_full_instruction'].map(split_cc0_sections).apply(pd.Series); cc0=pd.concat([cc0.drop(columns=['cc0_full_instruction']), sections], axis=1)
+    sections=cc0['cc0_full_instruction'].map(lambda text: split_cc0_sections(text, exclude_preferences=exclude_preferences)).apply(pd.Series); cc0=pd.concat([cc0.drop(columns=['cc0_full_instruction']), sections], axis=1)
     cc0['cc0_case_categories']=cc0['cc0_case_specific_instruction'].map(classify_categories); cc0['cc0_preference_categories']=cc0['cc0_preference_instruction'].map(classify_categories)
     cc0['case_specific_length']=cc0['cc0_case_specific_instruction'].str.len(); cc0['has_case_specific_instruction']=cc0['case_specific_length'].gt(0)
     ccmod['ccmod_order_key']=ccmod[ccmod_mapping['order']].map(normalize_order_id); ccmod['ccmod_iteration']=ccmod[ccmod_mapping['ccmod_number']].map(parse_ccmod_number); ccmod['ccmod_number_unparsed']=ccmod['ccmod_iteration'].isna()

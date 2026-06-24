@@ -245,6 +245,13 @@ def render_existing_analysis():
     include_full_rows = st.checkbox(
         "Include full row export and calibration for all records (may slow analysis for very large files)", value=True
     )
+    exclude_clinical_preferences = st.radio(
+        "Exclude Clinical Preferences?",
+        ("No", "Yes"),
+        index=0,
+        horizontal=True,
+        help="Yes: for CC0 files, ignore everything from [PreferenceInstrucions:] / [PreferenceInstructions:] onward.",
+    ) == "Yes"
 
     if st.button("Run analysis"):
         results = []
@@ -309,6 +316,7 @@ def render_existing_analysis():
                     exclusion_phrases=custom_phrases,
                     return_row_level=include_full_rows,
                     topic_keywords=topic_keywords,
+                    exclude_preferences=exclude_clinical_preferences,
                 )
                 res, applied_rules = apply_calibration_memory(res, mode, calibration_memory)
                 if applied_rules:
