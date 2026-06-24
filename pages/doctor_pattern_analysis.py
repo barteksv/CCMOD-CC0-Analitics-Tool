@@ -20,6 +20,52 @@ def _render_tab_guide(title: str, description: str, legend: dict[str, str]) -> N
             st.table(pd.DataFrame([{"Variable": k, "Meaning": v} for k, v in legend.items()]))
 
 
+VARIABLE_GLOSSARY = {
+    "present_upfront": "The same clinical category was detected in the CC0 case-specific instruction for that order.",
+    "preference_only": "The category was detected only in the CC0 preference/general section, not in the case-specific instruction.",
+    "missing_upfront": "The category appears first in CCMod 1 and was not detected in the CC0 case-specific instruction. In practice, this flags a request that may have been absent from upfront case instructions and appeared at the first modification.",
+    "late_emerging": "The category first appears at CCMod 2 or later, so it was not seen in the first modification comment for that order/category.",
+    "repeated_later_ccmods": "Count of order/category sequences where the same category appears across multiple CCMod iterations.",
+    "changed_decision": "The same category repeats but extracted details, numeric values, package/stage references, or action direction changed between iterations.",
+    "repeated_request": "True when a category appears in at least two different CCMod iterations for the same order.",
+    "consecutively_repeated": "True when repeated category requests occur in back-to-back CCMod iterations.",
+    "persistent_unresolved_request": "A repeated category with the same extracted clinical signature across iterations, suggesting the request persisted without a detected wording/value change.",
+    "added_detail": "Later comments add a different signature/detail, but the rule engine did not classify it as a changed decision.",
+    "first_ccmod_iteration": "Earliest parsed CCMod number where the category appears for an order.",
+    "last_ccmod_iteration": "Latest parsed CCMod number where the category appears for an order.",
+    "ccmods_with_category": "Number of distinct CCMod iterations containing the category for an order.",
+    "cc0_case_categories": "Categories detected from the case-specific parts of the CC0 initial instruction.",
+    "cc0_preference_categories": "Categories detected from preference/general CC0 instruction text.",
+    "analysis_text": "CCMod comment text after view markers and configured boilerplate exclusions are removed.",
+    "normalized_comment": "Lowercase normalized form used to group exact/similar recurring comments.",
+    "value_signature": "Extracted values/actions plus normalized wording used to compare whether repeated requests changed over time.",
+    "duplicate_clinical_comment": "Duplicate flag based on order, CCMod iteration, and normalized cleaned comment.",
+    "exact_source_duplicate": "Duplicate flag based on the original mapped order, CCMod number, and comment columns.",
+    "ccmod_number_unparsed": "True when the selected CCMod number cell did not contain a parsable number.",
+    "part_category_normalized": "Case type normalized from the mapped part_category column, usually Primary, Secondary, or Unknown.",
+    "boilerplate_audit": "Per-row record of default/custom exclusion phrases removed from the comment.",
+}
+
+
+def _render_variable_glossary(expanded: bool = False, key_suffix: str = "main") -> None:
+    """Render a searchable glossary for Doctor Pattern Analysis variables."""
+    with st.expander("Variable glossary / legend for Doctor Pattern Analysis", expanded=expanded):
+        st.markdown(
+            "Use this glossary to interpret columns in the on-screen tables and Excel export. "
+            "For example, **missing_upfront** means a category appeared in **CCMod 1** but was not found in the **CC0 case-specific instruction**."
+        )
+        glossary_df = pd.DataFrame(
+            [{"Variable": key, "Meaning": value} for key, value in VARIABLE_GLOSSARY.items()]
+        )
+        search = st.text_input("Search variable legend", key=f"dpa_variable_glossary_search_{key_suffix}")
+        if search:
+            mask = glossary_df.apply(
+                lambda col: col.astype(str).str.contains(search, case=False, na=False)
+            ).any(axis=1)
+            glossary_df = glossary_df[mask]
+        st.dataframe(glossary_df, use_container_width=True, hide_index=True)
+
+
 DOCTOR_PATTERN_TAB_GUIDES = {
     "Executive Summary": (
         "This page gives a management-level overview of the uploaded CC0 and CCMod relationship. "
@@ -133,6 +179,7 @@ def render_doctor_pattern_analysis():
     st.header("Doctor Pattern Analysis")
     st.caption("Compare CC0 instructions with later CCMod comments to identify repeated, late-emerging and changed requests.")
     st.info(DISCLAIMER)
+    _render_variable_glossary(expanded=True, key_suffix="top")
     c1,c2=st.columns(2)
     with c1: file_a=st.file_uploader("Upload Excel file A", type=['xlsx'], key='dpa_a')
     with c2: file_b=st.file_uploader("Upload Excel file B", type=['xlsx'], key='dpa_b')
@@ -213,6 +260,7 @@ def render_doctor_pattern_analysis():
         st.subheader("Similar Comment Clusters"); st.dataframe(view_df(res['similar_comment_clusters']), use_container_width=True)
     with tabs[2]:
         _render_tab_guide("CC0 vs CCMod", *DOCTOR_PATTERN_TAB_GUIDES["CC0 vs CCMod"])
+        _render_variable_glossary(expanded=False, key_suffix="cc0_vs_ccmod")
         gap=res['cc0_vs_ccmod']; st.dataframe(view_df(gap), use_container_width=True)
         if not gap.empty:
             st.plotly_chart(px.bar(gap, x='category', y=['present_upfront','preference_only','missing_upfront','late_emerging'], title='CC0 vs CCMod gap', barmode='stack'), use_container_width=True)
