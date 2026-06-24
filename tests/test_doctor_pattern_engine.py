@@ -114,3 +114,27 @@ def test_doctor_pattern_prefers_already_cleaned_ccmod_comments():
     assert row['analysis_text'] == '14 aligners'
     assert 'Aligner quantity / active aligners' in row['categories']
     assert 'Attachments' not in row['categories']
+
+
+def test_calibrated_bite_ramps_do_not_imply_occlusion():
+    cats = classify_categories('please give biteramps on 13,23')
+    assert 'Bite ramps' in cats
+    assert 'Occlusion / bite / contacts' not in cats
+
+
+def test_active_aligner_quantity_does_not_imply_tooth_movement():
+    cats = classify_categories('use max 25 active aligners')
+    assert 'Aligner quantity / active aligners' in cats
+    assert 'Tooth movement / alignment' not in cats
+
+
+def test_ipr_timing_phrases_imply_staging():
+    cats = classify_categories('IPR upper front as late as possible')
+    assert 'IPR / stripping / spacing' in cats
+    assert 'Staging / sequencing' in cats
+
+    cats = classify_categories('place bite ramps on 13,23 - Do IPR after alignment')
+    assert 'Bite ramps' in cats
+    assert 'IPR / stripping / spacing' in cats
+    assert 'Staging / sequencing' in cats
+    assert 'Occlusion / bite / contacts' not in cats
