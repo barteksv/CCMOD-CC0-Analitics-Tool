@@ -94,3 +94,23 @@ def test_pattern_analysis_can_exclude_cc0_preferences():
     row=res['cc0_cleaned'].iloc[0]
     assert row['cc0_preference_instruction'] == ''
     assert 'attachments' not in row['cc0_full_instruction'].lower()
+
+def test_doctor_pattern_prefers_already_cleaned_ccmod_comments():
+    cc0 = pd.DataFrame({'SO': ['1'], 'Instruction': ['']})
+    ccmod = pd.DataFrame({
+        'order_number': ['1'],
+        'CCMod number': [1],
+        'COMMENT': ['remove attachments'],
+        'COMMENT cleaned': ['14 aligners'],
+    })
+    res = analyze_doctor_patterns(
+        cc0,
+        ccmod,
+        {'order': 'SO', 'instruction': 'Instruction'},
+        {'order': 'order_number', 'ccmod_number': 'CCMod number', 'comment': 'COMMENT'},
+    )
+    row = res['ccmod_cleaned'].iloc[0]
+    assert row['original_text'] == '14 aligners'
+    assert row['analysis_text'] == '14 aligners'
+    assert 'Aligner quantity / active aligners' in row['categories']
+    assert 'Attachments' not in row['categories']

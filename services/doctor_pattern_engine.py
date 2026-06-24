@@ -18,8 +18,8 @@ ALIASES = {
     "order": ["SO","so","Sales Order","SalesOrder","Order Number","order_number","OrderNumber","order number"],
     "instruction": ["Instruction","Instructions","Doctor Instruction","Doctor Instructions","CC0 Instruction","Initial Instruction","Comments","Comment"],
     "ccmod_number": ["CCMod number","CCMod Number","CCMod","Modification Number","Mod Number","Iteration Number"],
-    "comment_cleaned": ["COMMENT cleaned"],
-    "comment": ["COMMENT cleaned","COMMENT","Comment","Comments","CCMod Comment","Modification Comment"],
+    "comment_cleaned": ["COMMENT cleaned", "cleaned_comment", "Cleaned Comment", "CCMod cleaned comment", "analysis_text"],
+    "comment": ["COMMENT cleaned", "cleaned_comment", "Cleaned Comment", "CCMod cleaned comment", "analysis_text", "COMMENT", "Comment", "Comments", "CCMod Comment", "Modification Comment"],
     "part_category": ["part_category","Part Category","Case Type","case_type","Order Type"],
     "pid": ["PID","pid"],
     "complete_time": ["complete_time","Complete Time","Date","date","completed_at"],
@@ -43,13 +43,27 @@ def detect_file_role(df: pd.DataFrame) -> str:
     if cc0_score>=2: return "CC0"
     return "Unknown"
 
+def _usable_text_column(df: pd.DataFrame, column: Optional[str]) -> bool:
+    if not column or column not in df.columns:
+        return False
+    return df[column].fillna('').astype(str).str.strip().replace({"nan":""}).ne("").any()
+
+def get_cleaned_ccmod_comment_column(df: pd.DataFrame) -> Optional[str]:
+    """Return the preferred already-cleaned CCMod comment column, when present."""
+    cleaned = detect_column(df.columns, ALIASES["comment_cleaned"])
+    return cleaned if _usable_text_column(df, cleaned) else None
+
+def resolve_ccmod_comment_column(df: pd.DataFrame, mapped_comment: Optional[str]) -> Optional[str]:
+    """Always prefer already-cleaned CCMod comments over raw comments."""
+    return get_cleaned_ccmod_comment_column(df) or mapped_comment
+
 def propose_mapping(df: pd.DataFrame, role: str) -> Dict[str, Optional[str]]:
     cols=df.columns
     if role == "CC0":
         return {"order": detect_column(cols, ALIASES["order"]), "instruction": detect_column(cols, ALIASES["instruction"])}
-    cleaned=detect_column(cols, ALIASES["comment_cleaned"])
-    raw=detect_column(cols, [a for a in ALIASES["comment"] if a != "COMMENT cleaned"])
-    comment=cleaned if cleaned and df[cleaned].astype(str).str.strip().replace({"nan":""}).ne("").any() else raw or cleaned
+    cleaned=get_cleaned_ccmod_comment_column(df)
+    raw=detect_column(cols, [a for a in ALIASES["comment"] if a not in ALIASES["comment_cleaned"]])
+    comment=cleaned or raw
     return {"order": detect_column(cols, ALIASES["order"]), "ccmod_number": detect_column(cols, ALIASES["ccmod_number"]), "comment": comment, "pid": detect_column(cols, ALIASES["pid"]), "part_category": detect_column(cols, ALIASES["part_category"]), "complete_time": detect_column(cols, ALIASES["complete_time"]), "doctor_id": detect_column(cols, ALIASES["doctor_id"])}
 
 def normalize_order_id(v: Any) -> Optional[str]:
@@ -164,6 +178,8 @@ def _val_signature(row):
 def analyze_doctor_patterns(cc0_df: pd.DataFrame, ccmod_df: pd.DataFrame, cc0_mapping: Dict[str,str], ccmod_mapping: Dict[str,Optional[str]], exclusions: Optional[List[str]]=None, duplicate_policy: str="exclude_duplicate_clinical", finding_weights: Optional[Dict[str,float]]=None, exclude_preferences: bool=False) -> Dict[str,pd.DataFrame]:
     exclusions=exclusions if exclusions is not None else DEFAULT_EXCLUSIONS; weights=finding_weights or DEFAULT_FINDING_WEIGHTS
     cc0=cc0_df.copy(); ccmod=ccmod_df.copy(); cc0['_source_row']=np.arange(len(cc0))+2; ccmod['_source_row']=np.arange(len(ccmod))+2
+    ccmod_mapping = dict(ccmod_mapping)
+    ccmod_mapping['comment'] = resolve_ccmod_comment_column(ccmod, ccmod_mapping.get('comment'))
     cc0['cc0_order_key']=cc0[cc0_mapping['order']].map(normalize_order_id); cc0['cc0_full_instruction']=cc0[cc0_mapping['instruction']].fillna('').astype(str)
     sections=cc0['cc0_full_instruction'].map(lambda text: split_cc0_sections(text, exclude_preferences=exclude_preferences)).apply(pd.Series); cc0=pd.concat([cc0.drop(columns=['cc0_full_instruction']), sections], axis=1)
     cc0['cc0_case_categories']=cc0['cc0_case_specific_instruction'].map(classify_categories); cc0['cc0_preference_categories']=cc0['cc0_preference_instruction'].map(classify_categories)

@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from config.doctor_pattern_rules import DEFAULT_EXCLUSIONS, DEFAULT_FINDING_WEIGHTS
-from services.doctor_pattern_engine import analyze_doctor_patterns, detect_file_role, propose_mapping
+from services.doctor_pattern_engine import analyze_doctor_patterns, detect_file_role, get_cleaned_ccmod_comment_column, propose_mapping
 from services.doctor_pattern_export import build_doctor_pattern_excel
 
 
@@ -204,6 +204,11 @@ def render_doctor_pattern_analysis():
             cm_order=_select_col("CCMod order identifier", ccmod_df.columns, ccmod_map.get('order'), True, 'dpa_cm_order')
             cm_num=_select_col("CCMod number", ccmod_df.columns, ccmod_map.get('ccmod_number'), True, 'dpa_cm_num')
             cm_comment=_select_col("CCMod comment", ccmod_df.columns, ccmod_map.get('comment'), True, 'dpa_cm_comment')
+            cleaned_comment_col = get_cleaned_ccmod_comment_column(ccmod_df)
+            if cleaned_comment_col:
+                if cm_comment != cleaned_comment_col:
+                    st.info(f"Doctor Pattern Analysis will use the already-cleaned CCMod comment column `{cleaned_comment_col}` instead of the selected raw comment column.")
+                cm_comment = cleaned_comment_col
             cm_pid=_select_col("PID", ccmod_df.columns, ccmod_map.get('pid'), False, 'dpa_pid')
             cm_part=_select_col("part_category", ccmod_df.columns, ccmod_map.get('part_category'), False, 'dpa_part')
             cm_time=_select_col("complete_time", ccmod_df.columns, ccmod_map.get('complete_time'), False, 'dpa_time')
