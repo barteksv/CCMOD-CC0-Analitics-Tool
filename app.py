@@ -38,6 +38,38 @@ from analyzer.calibration import (
 
 
 
+def apply_scroll_container_fix() -> None:
+    """Keep the Streamlit page scrollable when large tables extend below the viewport."""
+    st.markdown(
+        """
+        <style>
+            html, body, #root, .stApp {
+                min-height: 100%;
+                height: auto;
+                overflow-y: auto;
+            }
+
+            [data-testid="stAppViewContainer"],
+            [data-testid="stMain"],
+            section.main {
+                min-height: 100vh;
+                height: auto;
+                overflow-y: auto;
+            }
+
+            [data-testid="stMainBlockContainer"],
+            .block-container {
+                height: auto;
+                max-height: none;
+                overflow: visible;
+                padding-bottom: 6rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_analysis_page_guide() -> None:
     """Render English documentation for the standard CCMod/CC0 analysis page."""
     with st.expander("How this page works and variable legend", expanded=False):
@@ -446,6 +478,7 @@ def render_existing_analysis():
 
 def main():
     st.set_page_config(page_title="ClinCheck Comment and Instruction Analysis", layout="wide")
+    apply_scroll_container_fix()
     st.title("ClinCheck Comment and Instruction Analysis")
 
     analysis_tab, doctor_pattern_tab = st.tabs([
