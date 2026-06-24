@@ -19,6 +19,7 @@ from .text_cleaning import (
     remove_views,
     remove_phrases,
     remove_instruction_labels,
+    exclude_clinical_preferences,
     count_sentences,
     count_lines,
 )
@@ -47,6 +48,7 @@ def analyse_cc0_dataframe(
     exclusion_phrases: Optional[List[str]] = None,
     return_row_level: bool = True,
     topic_keywords: Optional[Dict[str, List[str]]] = None,
+    exclude_preferences: bool = False,
 ) -> CC0AnalysisResult:
     """
     Analyse a DataFrame containing CC0 initial instructions.
@@ -57,6 +59,7 @@ def analyse_cc0_dataframe(
         exclusion_phrases: Additional phrases to exclude from the text.
         return_row_level: Whether to return full row‑level classification.
         topic_keywords: Topic-to-keywords mapping used for Treatment Area Footprint classification.
+        exclude_preferences: If True, ignore text from the CC0 preference marker onward.
 
     Returns:
         A CC0AnalysisResult with aggregated statistics and tables.
@@ -70,7 +73,8 @@ def analyse_cc0_dataframe(
 
     for idx, row in df.iterrows():
         original = str(row.get(instruction_col, "") or "")
-        temp = remove_views(original)
+        analysis_source = exclude_clinical_preferences(original) if exclude_preferences else original
+        temp = remove_views(analysis_source)
         # Remove specified phrases (rare in CC0 but kept for consistency)
         temp2, _ = remove_phrases(temp, phrases)
         # Remove instruction labels (e.g. [FormInstructionsUpperArch:])
@@ -78,7 +82,7 @@ def analyse_cc0_dataframe(
         cleaned = normalize_whitespace(temp3)
         cleaned_lower = cleaned.lower()
         # Sections detection based on original text (with labels)
-        sections = detect_instruction_sections(original)
+        sections = detect_instruction_sections(analysis_source)
         # Topics detection on cleaned text
         topics = classify_topics(cleaned_lower, topic_keywords=topic_keywords)
         # Complexity

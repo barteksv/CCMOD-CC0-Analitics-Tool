@@ -78,3 +78,19 @@ def test_add_remove_attachment_and_ipr_detection():
     cm=pd.DataFrame({'order_number':['1','1'], 'CCMod number':[1,2], 'COMMENT':['add attachments','remove attachments']})
     res2=analyze_doctor_patterns(cc0, cm, {'order':'SO','instruction':'Instruction'}, {'order':'order_number','ccmod_number':'CCMod number','comment':'COMMENT'})
     assert any(res2['changed_decisions']['category'].str.contains('Attachments', na=False))
+
+def test_exclude_preferences_removes_marker_and_following_text():
+    s='[FormInstructionsUpperArch:] - [FormInstructionsLowerArch:] lower anterior IPR [PreferenceInstrucions:] global attachments preference'
+    out=split_cc0_sections(s, exclude_preferences=True)
+    assert 'global attachments preference' not in out['cc0_full_instruction']
+    assert out['cc0_preference_instruction'] == ''
+    assert 'lower anterior IPR' in out['cc0_case_specific_instruction']
+
+
+def test_pattern_analysis_can_exclude_cc0_preferences():
+    cc0=pd.DataFrame({'SO':['1'], 'Instruction':['[FormInstructionsLowerArch:] align lower [PreferenceInstrucions:] use attachments']})
+    ccmod=pd.DataFrame({'order_number':['1'], 'CCMod number':[1], 'COMMENT':['remove attachments']})
+    res=analyze_doctor_patterns(cc0, ccmod, {'order':'SO','instruction':'Instruction'}, {'order':'order_number','ccmod_number':'CCMod number','comment':'COMMENT'}, exclude_preferences=True)
+    row=res['cc0_cleaned'].iloc[0]
+    assert row['cc0_preference_instruction'] == ''
+    assert 'attachments' not in row['cc0_full_instruction'].lower()

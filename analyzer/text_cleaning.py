@@ -78,6 +78,20 @@ def remove_instruction_labels(text: str, labels: Iterable[str]) -> Tuple[str, in
     return cleaned, removed_count
 
 
+def exclude_clinical_preferences(text: str) -> str:
+    """Return CC0 text before the clinical preference instruction marker.
+
+    The source files may contain a misspelled ``[PreferenceInstrucions:]``
+    marker or the corrected ``[PreferenceInstructions:]`` marker. When this
+    marker exists, everything from the marker onward is treated as global
+    preference boilerplate and omitted from downstream analysis.
+    """
+    match = re.search(r"\[\s*PreferenceInstruc(?:tions|ions)\s*:\s*\]", str(text), flags=re.IGNORECASE)
+    if not match:
+        return str(text)
+    return str(text)[:match.start()]
+
+
 def count_sentences(text: str) -> int:
     """
     Roughly count the number of sentences or clauses in a text.
