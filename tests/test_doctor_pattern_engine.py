@@ -138,3 +138,23 @@ def test_ipr_timing_phrases_imply_staging():
     assert 'IPR / stripping / spacing' in cats
     assert 'Staging / sequencing' in cats
     assert 'Occlusion / bite / contacts' not in cats
+
+
+def test_procline_first_and_intrude_retract_imply_sequencing_and_torque():
+    cats = classify_categories('please procline first upper and lower incisors, intrude and retract')
+    assert 'Rotation / torque / intrusion / extrusion' in cats
+    assert 'Staging / sequencing' in cats
+
+
+def test_deep_bite_correction_timing_does_not_imply_occlusion():
+    cats = classify_categories('please procline first, intrude and retact during the deep bite correction to keep the inclination ideal')
+    assert 'Rotation / torque / intrusion / extrusion' in cats
+    assert 'Staging / sequencing' in cats
+    assert 'Occlusion / bite / contacts' not in cats
+
+
+def test_movement_during_distalization_and_after_proclination_imply_staging():
+    cats = classify_categories('please procline buccal crowntip upper and lower during distalization. Intrude lower incisors after proclination')
+    assert 'Distalization / mesialization' in cats
+    assert 'Rotation / torque / intrusion / extrusion' in cats
+    assert 'Staging / sequencing' in cats
