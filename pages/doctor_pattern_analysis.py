@@ -9,6 +9,117 @@ from config.doctor_pattern_rules import DEFAULT_EXCLUSIONS, DEFAULT_FINDING_WEIG
 from services.doctor_pattern_engine import analyze_doctor_patterns, detect_file_role, propose_mapping
 from services.doctor_pattern_export import build_doctor_pattern_excel
 
+
+
+def _render_tab_guide(title: str, description: str, legend: dict[str, str]) -> None:
+    """Render an English help block explaining a Doctor Pattern Analysis tab."""
+    with st.expander(f"How this tab works: {title}", expanded=False):
+        st.markdown(description)
+        if legend:
+            st.markdown("**Legend**")
+            st.table(pd.DataFrame([{"Variable": k, "Meaning": v} for k, v in legend.items()]))
+
+
+DOCTOR_PATTERN_TAB_GUIDES = {
+    "Executive Summary": (
+        "This page gives a management-level overview of the uploaded CC0 and CCMod relationship. "
+        "It starts with coverage metrics, then lists the highest-priority rule-based findings, data-quality checks, "
+        "and a chart of the most frequent request categories.",
+        {
+            "CC0 rows": "Number of rows read from the initial-instruction workbook.",
+            "unique CC0 SO": "Distinct order identifiers found in the CC0 file.",
+            "CCMod rows": "Number of rows read from the modification-comment workbook before cleaning.",
+            "usable CCMod comments after cleaning": "CCMod comments that still contain analyzable text after boilerplate removal.",
+            "matched modified orders": "Orders present in both uploaded datasets.",
+            "SO without CCMod in uploaded data": "CC0 orders that have no matching CCMod row in the uploaded CCMod file; this is not an acceptance/success flag.",
+            "percentage reaching CCMod 2+/3+": "Share of modified orders that reached at least the indicated modification iteration.",
+            "Problem finding": "A weighted, rule-based signal combining frequency, order coverage, repetition, and late emergence.",
+        },
+    ),
+    "Frequent Requests": (
+        "This page groups cleaned CCMod comments into clinical request categories and shows which requests recur most often. "
+        "It also exposes exact repeated comments and similar-comment clusters so users can see whether the same wording or request pattern is driving the result.",
+        {
+            "category": "Rule-based clinical request bucket detected from keywords, such as IPR, attachments, staging, expansion, or occlusion.",
+            "comment_count": "Number of usable CCMod comments assigned to the category.",
+            "unique_order_count": "Number of distinct orders that contain the category.",
+            "pct_usable_comments": "Category comments divided by all usable cleaned CCMod comments.",
+            "pct_modified_orders": "Orders with the category divided by all orders that have usable CCMod comments.",
+            "representative_original_comment": "One original source comment representing an exact normalized repeated text.",
+            "total_occurrences": "How often the normalized exact comment appears.",
+        },
+    ),
+    "CC0 vs CCMod": (
+        "This page compares what was stated upfront in CC0 instructions against what later appeared in CCMod comments. "
+        "It is designed to identify gaps: requests that were present from the beginning, mentioned only as general preferences, missing at CCMod 1, or emerging only in later CCMods.",
+        {
+            "present_upfront": "The CCMod category was also detected in the CC0 case-specific instruction.",
+            "preference_only": "The category was detected only in the CC0 preference/general section, not the case-specific instruction.",
+            "missing_upfront": "The category appears in CCMod 1 but was not detected in the CC0 case-specific instruction.",
+            "late_emerging": "The category first appears at CCMod 2 or later.",
+            "repeated_later_ccmods": "Orders where the same category appears across multiple CCMod iterations.",
+            "changed_decision": "The category repeats with changed extracted details, values, or action direction.",
+            "Sankey flow": "A visual link between categories detected in CC0 and categories detected later in CCMod for the same order.",
+        },
+    ),
+    "Iteration Patterns": (
+        "This page focuses on sequence behavior across CCMod numbers. It highlights requests repeated over multiple iterations, "
+        "requests that appear late, and cases where the requested detail or action changes over time.",
+        {
+            "first_ccmod_iteration": "Earliest CCMod number where the category appears for an order.",
+            "last_ccmod_iteration": "Latest CCMod number where the category appears for an order.",
+            "ccmods_with_category": "Count of distinct CCMod iterations containing the category.",
+            "sequence": "Ordered CCMod iteration path, for example 1 > 2 > 3.",
+            "repeated_request": "True when a category appears in at least two different CCMod iterations for the same order.",
+            "consecutively_repeated": "True when the category appears in back-to-back CCMod iterations.",
+            "persistent_unresolved_request": "Repeated category with the same extracted clinical signature across iterations.",
+            "added_detail": "Later comment adds detail without a detected direction/value change.",
+        },
+    ),
+    "Primary vs Secondary": (
+        "This page compares modification behavior by case type. It helps determine whether request volume, order coverage, "
+        "and comment length differ between Primary, Secondary, or unknown part categories.",
+        {
+            "part_category_normalized": "Case type normalized from the mapped part_category column; usually Primary, Secondary, or Unknown.",
+            "comment_count": "Number of categorized usable CCMod comments in the case-type group.",
+            "unique_orders": "Distinct orders represented in the case-type group.",
+            "avg_comment_length": "Average cleaned CCMod comment length for the group.",
+            "median_comment_length": "Median cleaned CCMod comment length for the group.",
+        },
+    ),
+    "Order Explorer": (
+        "This page lets a user inspect one order at a time. It shows the order-level summary and the cleaned CCMod rows so the aggregated findings can be traced back to the source sequence.",
+        {
+            "order_number / cc0_order_key": "Normalized order identifier used to match CC0 and CCMod files.",
+            "ccmod_order_key": "Normalized order identifier from the CCMod file.",
+            "cc0_case_categories": "Categories detected in the case-specific part of the initial instruction.",
+            "cc0_preference_categories": "Categories detected in preference/general instruction text.",
+            "has_ccmod_in_uploaded_file": "Whether the order has at least one usable CCMod row in the uploaded CCMod workbook.",
+            "max_ccmod_iteration": "Highest observed CCMod number for the order.",
+        },
+    ),
+    "Detailed Data": (
+        "This page exposes the underlying tables used by the report and provides CSV downloads for auditing, validation, or downstream analysis.",
+        {
+            "Cleaned CC0": "CC0 rows after section splitting and category detection.",
+            "Cleaned CCMod": "CCMod rows after cleaning, category detection, duplicate flags, and extracted-value parsing.",
+            "Matched order-level": "One row per CC0 order with matched CCMod summary fields.",
+            "Category-level": "One row per usable CCMod category occurrence after exploding multi-category comments.",
+            "Sequence-level": "Order/category sequence table used for repeated, late, and changed-decision logic.",
+            "Unmatched records": "Rows from either file whose order key did not match the other uploaded file.",
+        },
+    ),
+    "Export": (
+        "This page shows which boilerplate exclusions were applied and creates the full Excel workbook for sharing the Doctor Pattern Analysis externally.",
+        {
+            "exclusion": "Default or custom boilerplate phrase removed before analysis.",
+            "rows_modified": "Number of CCMod rows affected by that exclusion phrase.",
+            "occurrences_removed": "Total number of phrase occurrences removed.",
+            "Doctor_Pattern_Analysis.xlsx": "Multi-sheet Excel export containing summaries, tables, rules used, and audit data.",
+        },
+    ),
+}
+
 DISCLAIMER = "This analysis identifies text and sequence patterns within the uploaded CC0 and CCMod files. An order without a matched CCMod is reported only as having no CCMod in the uploaded dataset. It is not automatically classified as accepted or clinically successful. Pattern classification is rule-based and should be reviewed before clinical conclusions are made."
 
 def _read_excel(uploaded):
@@ -86,6 +197,7 @@ def render_doctor_pattern_analysis():
         return out
     tabs=st.tabs(["Executive Summary","Frequent Requests","CC0 vs CCMod","Iteration Patterns","Primary vs Secondary","Order Explorer","Detailed Data","Export"])
     with tabs[0]:
+        _render_tab_guide("Executive Summary", *DOCTOR_PATTERN_TAB_GUIDES["Executive Summary"])
         st.subheader("Data Coverage")
         cov=res['coverage'].iloc[0].to_dict(); cols=st.columns(4)
         for i,(k,v) in enumerate(cov.items()): cols[i%4].metric(k, f"{v:.1%}" if isinstance(v,float) and 'percentage' in k.lower() or 'rate' in k.lower() else str(v))
@@ -95,10 +207,12 @@ def render_doctor_pattern_analysis():
         st.subheader("Data Quality"); st.dataframe(view_df(res['data_quality']), use_container_width=True)
         if not res['frequent_requests'].empty: st.plotly_chart(px.bar(res['frequent_requests'].head(15).sort_values('comment_count'), x='comment_count', y='category', orientation='h', title='Most frequent request categories'), use_container_width=True)
     with tabs[1]:
+        _render_tab_guide("Frequent Requests", *DOCTOR_PATTERN_TAB_GUIDES["Frequent Requests"])
         df=res['frequent_requests']; st.dataframe(view_df(df), use_container_width=True)
         st.subheader("Exact Repeated Comments"); st.dataframe(view_df(res['exact_comments']), use_container_width=True)
         st.subheader("Similar Comment Clusters"); st.dataframe(view_df(res['similar_comment_clusters']), use_container_width=True)
     with tabs[2]:
+        _render_tab_guide("CC0 vs CCMod", *DOCTOR_PATTERN_TAB_GUIDES["CC0 vs CCMod"])
         gap=res['cc0_vs_ccmod']; st.dataframe(view_df(gap), use_container_width=True)
         if not gap.empty:
             st.plotly_chart(px.bar(gap, x='category', y=['present_upfront','preference_only','missing_upfront','late_emerging'], title='CC0 vs CCMod gap', barmode='stack'), use_container_width=True)
@@ -122,29 +236,34 @@ def render_doctor_pattern_analysis():
             heat=cats.dropna(subset=['ccmod_iteration']).pivot_table(index='category', columns='ccmod_iteration', values='ccmod_order_key', aggfunc='count', fill_value=0)
             st.plotly_chart(px.imshow(heat, title='Category by CCMod iteration'), use_container_width=True)
     with tabs[3]:
+        _render_tab_guide("Iteration Patterns", *DOCTOR_PATTERN_TAB_GUIDES["Iteration Patterns"])
         st.subheader("Repeated Across Iterations"); st.dataframe(view_df(res['repeated_requests']), use_container_width=True)
         st.subheader("Late-Emerging Requests"); st.dataframe(view_df(res['late_requests']), use_container_width=True)
         st.subheader("Changed Decisions"); st.dataframe(view_df(res['changed_decisions']), use_container_width=True)
         if not res['order_summary'].empty and 'max_ccmod_iteration' in res['order_summary']:
             st.plotly_chart(px.histogram(res['order_summary'], x='max_ccmod_iteration', title='Maximum CCMod number per order'), use_container_width=True)
     with tabs[4]:
+        _render_tab_guide("Primary vs Secondary", *DOCTOR_PATTERN_TAB_GUIDES["Primary vs Secondary"])
         st.dataframe(view_df(res['primary_vs_secondary']), use_container_width=True)
         cats=res['category_rows']
         if not cats.empty:
             comp=cats.groupby(['part_category_normalized','category']).size().reset_index(name='count')
             st.plotly_chart(px.bar(comp, x='category', y='count', color='part_category_normalized', barmode='group', title='Primary vs Secondary category counts'), use_container_width=True)
     with tabs[5]:
+        _render_tab_guide("Order Explorer", *DOCTOR_PATTERN_TAB_GUIDES["Order Explorer"])
         orders=sorted(res['order_summary']['cc0_order_key'].dropna().astype(str).unique().tolist())
         sel=st.selectbox("order_number", orders) if orders else None
         if sel:
             st.write(res['order_summary'][res['order_summary']['cc0_order_key'].astype(str)==sel].T)
             st.dataframe(view_df(res['ccmod_cleaned'][res['ccmod_cleaned']['ccmod_order_key'].astype(str)==sel]), use_container_width=True)
     with tabs[6]:
+        _render_tab_guide("Detailed Data", *DOCTOR_PATTERN_TAB_GUIDES["Detailed Data"])
         for name,key in [("Cleaned CC0",'cc0_cleaned'),("Cleaned CCMod",'ccmod_cleaned'),("Matched order-level",'order_summary'),("Category-level",'category_rows'),("Sequence-level",'order_sequences'),("Changed decisions",'changed_decisions'),("Unmatched records",'unmatched_orders')]:
             with st.expander(name):
                 st.dataframe(view_df(res[key]), use_container_width=True)
                 st.download_button(f"Download {name} CSV", res[key].to_csv(index=False).encode('utf-8'), file_name=f"{key}.csv", mime='text/csv')
     with tabs[7]:
+        _render_tab_guide("Export", *DOCTOR_PATTERN_TAB_GUIDES["Export"])
         st.dataframe(view_df(res['boilerplate_audit']), use_container_width=True)
         xlsx=build_doctor_pattern_excel(res)
         st.download_button("Download Doctor_Pattern_Analysis.xlsx", xlsx, file_name="Doctor_Pattern_Analysis.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
