@@ -215,7 +215,13 @@ def render_doctor_pattern_analysis():
         st.write(pd.DataFrame({"active_exclusion":active}))
     with st.expander("Advanced Settings"):
         duplicate_policy=st.selectbox("Duplicate handling", ["exclude_duplicate_clinical","keep_all_rows","exclude_exact_source_duplicates"], index=0)
-        exclude_clinical_preferences=st.radio("Exclude Clinical Preferences?", ["No","Yes"], index=0, horizontal=True, help="Yes: for CC0 files, ignore everything from [PreferenceInstrucions:] / [PreferenceInstructions:] onward.")=="Yes"
+        exclude_clinical_preferences=st.radio(
+            "Exclude Clinical Preferences?",
+            ["No","Yes"],
+            index=0,
+            horizontal=True,
+            help="Yes: for CC0 files, ignore everything from [PreferenceInstrucions:] / [PreferenceInstructions:] onward before comparing CC0 to CCMod patterns.",
+        )=="Yes"
         weights={k:st.number_input(k, value=float(v), min_value=0.0, max_value=1.0, step=.05) for k,v in DEFAULT_FINDING_WEIGHTS.items()}
         show_ids=st.checkbox("Show order identifiers in report", value=True)
     errors=[]
@@ -228,11 +234,15 @@ def render_doctor_pattern_analysis():
     if errors: return
     if st.button("Run Pattern Analysis", type='primary'):
         with st.spinner("Running rule-based sequence analysis..."):
-            res=analyze_doctor_patterns(cc0_df, ccmod_df, {'order':cc0_order,'instruction':cc0_instruction}, {'order':cm_order,'ccmod_number':cm_num,'comment':cm_comment,'pid':cm_pid,'part_category':cm_part,'complete_time':cm_time,'doctor_id':cm_doc}, active, duplicate_policy, weights, exclude_clinical_preferences)
+            res=analyze_doctor_patterns(cc0_df, ccmod_df, {'order':cc0_order,'instruction':cc0_instruction}, {'order':cm_order,'ccmod_number':cm_num,'comment':cm_comment,'pid':cm_pid,'part_category':cm_part,'complete_time':cm_time,'doctor_id':cm_doc}, exclusions=active, duplicate_policy=duplicate_policy, finding_weights=weights, exclude_preferences=exclude_clinical_preferences)
         st.session_state['doctor_pattern_result']=res
         st.session_state['doctor_pattern_show_ids']=show_ids
+        st.session_state['doctor_pattern_exclude_clinical_preferences']=exclude_clinical_preferences
     res=st.session_state.get('doctor_pattern_result')
     show_ids=st.session_state.get('doctor_pattern_show_ids', True)
+    exclude_clinical_preferences=st.session_state.get('doctor_pattern_exclude_clinical_preferences', False)
+    if exclude_clinical_preferences:
+        st.info("Clinical preference text is excluded from CC0 instructions in this Doctor Pattern Analysis run.")
     if not res: return
     def view_df(df):
         out=df.copy()
