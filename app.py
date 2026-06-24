@@ -37,6 +37,43 @@ from analyzer.calibration import (
 )
 
 
+
+def render_analysis_page_guide() -> None:
+    """Render English documentation for the standard CCMod/CC0 analysis page."""
+    with st.expander("How this page works and variable legend", expanded=False):
+        st.markdown(
+            "This page analyzes one or more Excel files as either **CCMod doctor comments** or **CC0 initial instructions**. "
+            "The app detects the file type, cleans boilerplate text, classifies treatment topics, estimates complexity, "
+            "creates English summaries, and exports Excel workbooks. After the first run, the calibration area lets users "
+            "correct row-level classifications and save those corrections as future learning rules."
+        )
+        st.markdown("**Workflow**")
+        st.markdown(
+            "1. Upload `.xlsx` files.  \n"
+            "2. Choose Auto, CCMod, or CC0 mode.  \n"
+            "3. Optionally add custom exclusion phrases and custom Treatment Area Footprint categories.  \n"
+            "4. Run the analysis and download individual or ZIP exports.  \n"
+            "5. Use Post-analysis calibration when a row needs a corrected topic, focus, complexity, or new-plan flag."
+        )
+        legend = {
+            "Analysis mode": "Auto lets the app infer CCMod versus CC0 from columns; manual modes force a specific pipeline.",
+            "Custom exclusion phrases": "User-provided boilerplate phrases removed before classification; enter one phrase per line.",
+            "Treatment Area Footprint categories / topics": "Clinical areas detected from keywords, such as attachments, IPR, movements, staging, occlusion, or custom categories.",
+            "original_length": "Character count of the source comment or instruction before cleaning.",
+            "cleaned_length": "Character count after view markers, labels, and exclusion phrases are removed.",
+            "avg_cleaned_length": "Average cleaned text length for a group, used as a rough workload/detail indicator.",
+            "median_cleaned": "Middle cleaned-text length; less sensitive to extreme long comments than the average.",
+            "p90_cleaned": "90th percentile cleaned-text length; indicates very detailed or complex upper-tail records.",
+            "complexity": "Rule-based label (Empty, Low, Medium, High) based on text length, number of topics, sections, lines, or clauses.",
+            "focus_type": "CCMod-only summary of the main request type, such as only attachments, IPR + other topics, staging, or multi-topic comment.",
+            "new_plan_request": "CCMod-only flag for comments that ask for a new, previous, reposted, or alternative treatment plan.",
+            "clauses": "Approximate sentence/clause count in a cleaned CCMod comment.",
+            "sections": "CC0 instruction sections detected from source labels, such as upper arch, lower arch, preference, or other.",
+            "num_lines": "Number of instruction lines after label removal, before final whitespace collapse.",
+            "Calibration memory": "Saved correction rules applied to identical cleaned phrases and matching row positions in future analyses.",
+        }
+        st.table(pd.DataFrame([{"Variable": k, "Meaning": v} for k, v in legend.items()]))
+
 def parse_custom_phrases(text: str) -> List[str]:
     """Split a multi‑line string into a list of phrases, ignoring empty lines."""
     if not text:
@@ -133,6 +170,7 @@ def render_existing_analysis():
     st.write(
         "Upload one or more Excel files with comments (CCMod) or initial instructions (CC0) to generate a comprehensive analysis."
     )
+    render_analysis_page_guide()
 
     uploaded_files = st.file_uploader(
         "Select Excel files (.xlsx)", accept_multiple_files=True, type=["xlsx"]
@@ -410,6 +448,9 @@ def main():
     with analysis_tab:
         render_existing_analysis()
     with doctor_pattern_tab:
+        st.expander("Page overview", expanded=False).markdown(
+            "Use this page when you have both initial CC0 instructions and later CCMod comments and want to explain repeated, late-emerging, or changed doctor requests. Detailed English help and legends appear inside each results tab after the analysis runs."
+        )
         render_doctor_pattern_analysis()
 
 
