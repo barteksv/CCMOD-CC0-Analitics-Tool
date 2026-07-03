@@ -1,4 +1,6 @@
+import io
 import pandas as pd
+from services.doctor_pattern_export import build_missing_upfront_evidence_excel
 from services.doctor_pattern_engine import (
     analyze_doctor_patterns, clean_text, extract_values, normalize_order_id,
     normalize_part_category, parse_ccmod_number, split_cc0_sections, classify_categories
@@ -192,3 +194,19 @@ def test_missing_upfront_evidence_contains_auditable_cc0_and_ccmod_text():
     assert order_1['present_in_cc0_case_specific'] is False or order_1['present_in_cc0_case_specific'] == False
     order_2 = evidence[evidence['order_number'] == '2'].iloc[0]
     assert order_2['present_in_cc0_preference_only'] is True or order_2['present_in_cc0_preference_only'] == True
+
+
+def test_missing_upfront_evidence_excel_export_is_xlsx_workbook():
+    evidence = pd.DataFrame({
+        'order_number': ['1'],
+        'category': ['Attachments / retention'],
+        'cc0_case_specific_instruction': ['align teeth'],
+        'ccmod_exact_comment': ['add attachments'],
+    })
+
+    workbook = build_missing_upfront_evidence_excel(evidence)
+    exported = pd.read_excel(io.BytesIO(workbook), sheet_name='Missing_Upfront_Evidence', engine='openpyxl')
+
+    assert exported.loc[0, 'order_number'] == 1
+    assert exported.loc[0, 'category'] == 'Attachments / retention'
+    assert exported.loc[0, 'ccmod_exact_comment'] == 'add attachments'

@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from config.doctor_pattern_rules import DEFAULT_EXCLUSIONS, DEFAULT_FINDING_WEIGHTS
 from services.doctor_pattern_engine import analyze_doctor_patterns, detect_file_role, get_cleaned_ccmod_comment_column, propose_mapping
-from services.doctor_pattern_export import build_doctor_pattern_excel
+from services.doctor_pattern_export import build_doctor_pattern_excel, build_missing_upfront_evidence_excel
 
 
 
@@ -287,7 +287,7 @@ def render_doctor_pattern_analysis():
         missing_evidence = res.get('missing_upfront_evidence', pd.DataFrame())
         st.dataframe(view_df(missing_evidence), use_container_width=True)
         if not missing_evidence.empty:
-            st.download_button("Download missing-upfront evidence CSV", missing_evidence.to_csv(index=False).encode('utf-8'), file_name="missing_upfront_evidence.csv", mime='text/csv')
+            st.download_button("Download missing-upfront evidence Excel", build_missing_upfront_evidence_excel(missing_evidence), file_name="missing_upfront_evidence.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         if not gap.empty:
             st.plotly_chart(px.bar(gap, x='category', y=['present_upfront','preference_only','missing_upfront','late_emerging'], title='CC0 vs CCMod gap', barmode='stack'), use_container_width=True)
             min_flow=st.slider('Minimum Sankey frequency', 1, 25, 3)

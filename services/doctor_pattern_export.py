@@ -70,3 +70,25 @@ def build_doctor_pattern_excel(result: Dict[str,pd.DataFrame]) -> bytes:
                 ws.set_column(idx,idx,width, wrap if any(k in col.lower() for k in ['comment','instruction','sequence','text','evidence','issue']) else None)
                 if 'pct' in col.lower() or 'percentage' in col.lower() or 'rate' in col.lower(): ws.set_column(idx,idx,14,pct)
     return buf.getvalue()
+
+
+def build_missing_upfront_evidence_excel(missing_upfront_evidence: pd.DataFrame) -> bytes:
+    """Build a standalone Excel workbook for the missing-upfront evidence dataset."""
+    buf = io.BytesIO()
+    df = _safe_df(missing_upfront_evidence)
+    if df.empty:
+        df = pd.DataFrame({"message": ["No missing-upfront evidence rows for this analysis."]})
+    with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+        wb = writer.book
+        header = wb.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1})
+        wrap = wb.add_format({'text_wrap': True, 'valign': 'top'})
+        df.to_excel(writer, sheet_name='Missing_Upfront_Evidence', index=False)
+        ws = writer.sheets['Missing_Upfront_Evidence']
+        ws.freeze_panes(1, 0)
+        ws.autofilter(0, 0, max(len(df), 1), max(len(df.columns) - 1, 0))
+        for idx, col in enumerate(df.columns):
+            ws.write(0, idx, col, header)
+            width = min(max(12, min(60, int(df[col].astype(str).str.len().quantile(.9) if len(df) else 12) + 2)), 60)
+            use_wrap = any(k in col.lower() for k in ['comment', 'instruction', 'text', 'evidence', 'rule'])
+            ws.set_column(idx, idx, width, wrap if use_wrap else None)
+    return buf.getvalue()
