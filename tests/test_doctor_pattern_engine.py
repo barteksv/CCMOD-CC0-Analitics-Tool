@@ -158,3 +158,37 @@ def test_movement_during_distalization_and_after_proclination_imply_staging():
     assert 'Distalization / mesialization' in cats
     assert 'Rotation / torque / intrusion / extrusion' in cats
     assert 'Staging / sequencing' in cats
+
+def test_missing_upfront_evidence_contains_auditable_cc0_and_ccmod_text():
+    cc0 = pd.DataFrame({
+        'SO': ['1', '2', '3'],
+        'Instruction': [
+            '[FormInstructionsUpperArch:] align teeth',
+            '[FormInstructionsUpperArch:] align teeth [PreferenceInstructions:] use attachments',
+            '[FormInstructionsUpperArch:] add attachments',
+        ],
+    })
+    ccmod = pd.DataFrame({
+        'order_number': ['1', '2', '3'],
+        'CCMod number': [1, 1, 1],
+        'COMMENT': ['add attachments', 'add attachments', 'add attachments'],
+    })
+
+    res = analyze_doctor_patterns(
+        cc0,
+        ccmod,
+        {'order': 'SO', 'instruction': 'Instruction'},
+        {'order': 'order_number', 'ccmod_number': 'CCMod number', 'comment': 'COMMENT'},
+        duplicate_policy='keep_all_rows',
+    )
+
+    evidence = res['missing_upfront_evidence']
+    assert set(evidence['order_number']) == {'1', '2'}
+    assert set(evidence['missing_upfront_status']) == {'missing_from_cc0', 'preference_only_not_upfront'}
+    order_1 = evidence[evidence['order_number'] == '1'].iloc[0]
+    assert order_1['category'] == 'Attachments / retention'
+    assert order_1['cc0_case_specific_instruction'] == 'align teeth'
+    assert order_1['ccmod_exact_comment'] == 'add attachments'
+    assert order_1['present_in_cc0_case_specific'] is False or order_1['present_in_cc0_case_specific'] == False
+    order_2 = evidence[evidence['order_number'] == '2'].iloc[0]
+    assert order_2['present_in_cc0_preference_only'] is True or order_2['present_in_cc0_preference_only'] == True
