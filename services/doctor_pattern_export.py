@@ -9,6 +9,9 @@ VARIABLE_GLOSSARY = {
     "preference_only": "The category was detected only in the CC0 preference/general section, not in the case-specific instruction.",
     "missing_upfront": "The category appears first in CCMod 1 and was not detected in the CC0 case-specific instruction.",
     "late_emerging": "The category first appears at CCMod 2 or later.",
+    "missing_upfront_evidence": "Row-level audit dataset: category detected in a matched CCMod 1 comment while absent from the CC0 case-specific instruction.",
+    "missing_upfront_status": "missing_from_cc0 means absent from case-specific and preference CC0 text; preference_only_not_upfront means detected only in preference/general CC0 text.",
+    "verification_rule": "Plain-language rule explaining why the row was included in the missing-upfront audit dataset.",
     "repeated_later_ccmods": "Count of order/category sequences where the same category appears across multiple CCMod iterations.",
     "changed_decision": "The same category repeats but extracted details, values, or action direction changed between iterations.",
     "repeated_request": "True when a category appears in at least two different CCMod iterations for the same order.",
@@ -30,7 +33,7 @@ VARIABLE_GLOSSARY = {
     "boilerplate_audit": "Per-row record of default/custom exclusion phrases removed from the comment.",
 }
 
-SHEETS = [("Executive_Summary","findings"),("Data_Coverage","coverage"),("Frequent_Requests","frequent_requests"),("Exact_Comments","exact_comments"),("Similar_Comment_Clusters","similar_comment_clusters"),("CC0_vs_CCMod","cc0_vs_ccmod"),("Repeated_Requests","repeated_requests"),("Late_Requests","late_requests"),("Changed_Decisions","changed_decisions"),("Primary_vs_Secondary","primary_vs_secondary"),("Order_Summary","order_summary"),("Order_Sequences","order_sequences"),("CC0_Cleaned","cc0_cleaned"),("CCMod_Cleaned","ccmod_cleaned"),("Unmatched_Orders","unmatched_orders"),("Boilerplate_Audit","boilerplate_audit"),("Rules_Used","rules_used")]
+SHEETS = [("Executive_Summary","findings"),("Data_Coverage","coverage"),("Frequent_Requests","frequent_requests"),("Exact_Comments","exact_comments"),("Similar_Comment_Clusters","similar_comment_clusters"),("CC0_vs_CCMod","cc0_vs_ccmod"),("Missing_Upfront_Evidence","missing_upfront_evidence"),("Repeated_Requests","repeated_requests"),("Late_Requests","late_requests"),("Changed_Decisions","changed_decisions"),("Primary_vs_Secondary","primary_vs_secondary"),("Order_Summary","order_summary"),("Order_Sequences","order_sequences"),("CC0_Cleaned","cc0_cleaned"),("CCMod_Cleaned","ccmod_cleaned"),("Unmatched_Orders","unmatched_orders"),("Boilerplate_Audit","boilerplate_audit"),("Rules_Used","rules_used")]
 
 def _safe_df(df):
     if df is None: return pd.DataFrame()

@@ -224,6 +224,7 @@ def analyze_doctor_patterns(cc0_df: pd.DataFrame, ccmod_df: pd.DataFrame, cc0_ma
                         changes.append({"order_number":order,"part_category":r.get('part_category_normalized','Unknown'),"category":cat,"earlier_ccmod_number":prev['iter'],"earlier_exact_comment":prev['comment'],"later_ccmod_number":r['ccmod_iteration'],"later_exact_comment":r['analysis_text'],"extracted_earlier_value":prev['sig'],"extracted_later_value":sig,"change_type":f"{cat} changed"})
                     prev={'sig':sig,'iter':r['ccmod_iteration'],'comment':r['analysis_text']}
     sequence=pd.DataFrame(seq_rows); changed=pd.DataFrame(changes)
+    missing_upfront_evidence = _build_missing_upfront_evidence(cc0_orders, usable)
     freq=exploded.groupby('category').agg(comment_count=('category','size'), unique_order_count=('ccmod_order_key','nunique'), average_first_ccmod_number=('ccmod_iteration','mean'), median_first_ccmod_number=('ccmod_iteration','median')).reset_index() if not exploded.empty else pd.DataFrame(columns=['category'])
     total_comments=max(len(usable),1); modified_orders=max(usable['ccmod_order_key'].nunique(),1)
     if not freq.empty:
@@ -246,7 +247,61 @@ def analyze_doctor_patterns(cc0_df: pd.DataFrame, ccmod_df: pd.DataFrame, cc0_ma
     findings=_build_findings(freq, sequence, exact, usable, weights)
     unmatched=pd.concat([cc0[~cc0['cc0_order_key'].isin(set(usable['ccmod_order_key'].dropna()))].assign(unmatched_type='CC0 without CCMod'), ccmod[~ccmod['ccmod_order_key'].isin(set(cc0['cc0_order_key'].dropna()))].assign(unmatched_type='CCMod without CC0')], ignore_index=True, sort=False)
     rules=pd.DataFrame([{"category":c,"keywords":"; ".join(map(str,CATEGORY_KEYWORDS.get(c,[])))} for c in ALL_CATEGORIES])
-    return {"coverage":coverage,"frequent_requests":freq.sort_values('comment_count', ascending=False) if not freq.empty else freq,"exact_comments":exact,"similar_comment_clusters":similar,"cc0_vs_ccmod":cc0_vs,"repeated_requests":repeated,"late_requests":late,"changed_decisions":changed,"primary_vs_secondary":primary_secondary,"order_summary":order_summary,"order_sequences":sequence,"cc0_cleaned":cc0,"ccmod_cleaned":ccmod,"unmatched_orders":unmatched,"boilerplate_audit":boiler,"rules_used":rules,"data_quality":quality,"findings":findings,"category_rows":exploded}
+    return {"coverage":coverage,"frequent_requests":freq.sort_values('comment_count', ascending=False) if not freq.empty else freq,"exact_comments":exact,"similar_comment_clusters":similar,"cc0_vs_ccmod":cc0_vs,"missing_upfront_evidence":missing_upfront_evidence,"repeated_requests":repeated,"late_requests":late,"changed_decisions":changed,"primary_vs_secondary":primary_secondary,"order_summary":order_summary,"order_sequences":sequence,"cc0_cleaned":cc0,"ccmod_cleaned":ccmod,"unmatched_orders":unmatched,"boilerplate_audit":boiler,"rules_used":rules,"data_quality":quality,"findings":findings,"category_rows":exploded}
+
+def _build_missing_upfront_evidence(cc0_orders: pd.DataFrame, usable_ccmod: pd.DataFrame) -> pd.DataFrame:
+    """Build auditable row-level evidence for categories missing from CC0 upfront text.
+
+    A row is included when a category appears in a CCMod 1 comment for a matched
+    order and that same category is not detected in the CC0 case-specific
+    instruction. The table intentionally carries both the CC0 text and the
+    exact CCMod comment so reviewers can verify each missing-upfront flag.
+    """
+    columns = [
+        "order_number", "category", "missing_upfront_status", "verification_rule",
+        "cc0_source_row", "ccmod_source_row", "cc0_case_specific_instruction",
+        "cc0_preference_instruction", "cc0_case_categories", "cc0_preference_categories",
+        "ccmod_number", "part_category_normalized", "ccmod_exact_comment",
+        "ccmod_value_signature", "present_in_cc0_case_specific", "present_in_cc0_preference_only",
+    ]
+    if cc0_orders.empty or usable_ccmod.empty:
+        return pd.DataFrame(columns=columns)
+
+    cc0_lookup = cc0_orders.dropna(subset=["cc0_order_key"]).drop_duplicates("cc0_order_key").set_index("cc0_order_key")
+    rows = []
+    ccmod_one = usable_ccmod[usable_ccmod["ccmod_iteration"].eq(1)].copy()
+    for _, cm in ccmod_one.explode("categories").rename(columns={"categories": "category"}).iterrows():
+        order = cm.get("ccmod_order_key")
+        category = cm.get("category")
+        if not order or pd.isna(category) or order not in cc0_lookup.index:
+            continue
+        cc0 = cc0_lookup.loc[order]
+        case_categories = set(cc0.get("cc0_case_categories") or [])
+        preference_categories = set(cc0.get("cc0_preference_categories") or [])
+        present_case = category in case_categories
+        present_preference = (not present_case) and category in preference_categories
+        if present_case:
+            continue
+        status = "preference_only_not_upfront" if present_preference else "missing_from_cc0"
+        rows.append({
+            "order_number": order,
+            "category": category,
+            "missing_upfront_status": status,
+            "verification_rule": "Category detected in CCMod 1 exact comment but absent from CC0 case-specific instruction.",
+            "cc0_source_row": cc0.get("_source_row"),
+            "ccmod_source_row": cm.get("_source_row"),
+            "cc0_case_specific_instruction": cc0.get("cc0_case_specific_instruction", ""),
+            "cc0_preference_instruction": cc0.get("cc0_preference_instruction", ""),
+            "cc0_case_categories": sorted(case_categories),
+            "cc0_preference_categories": sorted(preference_categories),
+            "ccmod_number": cm.get("ccmod_iteration"),
+            "part_category_normalized": cm.get("part_category_normalized", "Unknown"),
+            "ccmod_exact_comment": cm.get("analysis_text", ""),
+            "ccmod_value_signature": cm.get("value_signature", ""),
+            "present_in_cc0_case_specific": present_case,
+            "present_in_cc0_preference_only": present_preference,
+        })
+    return pd.DataFrame(rows, columns=columns).sort_values(["category", "order_number", "ccmod_source_row"]) if rows else pd.DataFrame(columns=columns)
 
 def _build_findings(freq, sequence, exact, usable, weights):
     if freq is None or freq.empty: return pd.DataFrame(columns=['problem_title','evidence','scale','exact_recurring_comments','example_sequence','part_category_context','observed_issue','importance_score'])

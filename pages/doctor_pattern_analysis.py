@@ -25,6 +25,9 @@ VARIABLE_GLOSSARY = {
     "preference_only": "The category was detected only in the CC0 preference/general section, not in the case-specific instruction.",
     "missing_upfront": "The category appears first in CCMod 1 and was not detected in the CC0 case-specific instruction. In practice, this flags a request that may have been absent from upfront case instructions and appeared at the first modification.",
     "late_emerging": "The category first appears at CCMod 2 or later, so it was not seen in the first modification comment for that order/category.",
+    "missing_upfront_evidence": "Row-level audit table with the CC0 case-specific instruction, CC0 preference text, CCMod 1 exact comment, source rows, and flags proving why a request was missing upfront.",
+    "missing_upfront_status": "missing_from_cc0 means not detected anywhere in CC0 for that order/category; preference_only_not_upfront means detected only in CC0 preference/general text, not case-specific upfront instruction.",
+    "verification_rule": "Plain-language rule used to include the row in the missing-upfront audit dataset.",
     "repeated_later_ccmods": "Count of order/category sequences where the same category appears across multiple CCMod iterations.",
     "changed_decision": "The same category repeats but extracted details, numeric values, package/stage references, or action direction changed between iterations.",
     "repeated_request": "True when a category appears in at least two different CCMod iterations for the same order.",
@@ -103,6 +106,7 @@ DOCTOR_PATTERN_TAB_GUIDES = {
             "preference_only": "The category was detected only in the CC0 preference/general section, not the case-specific instruction.",
             "missing_upfront": "The category appears in CCMod 1 but was not detected in the CC0 case-specific instruction.",
             "late_emerging": "The category first appears at CCMod 2 or later.",
+            "missing_upfront_evidence": "Concrete row-level dataset for validation: CC0 text beside the exact CCMod 1 comment that introduced the category.",
             "repeated_later_ccmods": "Orders where the same category appears across multiple CCMod iterations.",
             "changed_decision": "The category repeats with changed extracted details, values, or action direction.",
             "Sankey flow": "A visual link between categories detected in CC0 and categories detected later in CCMod for the same order.",
@@ -278,6 +282,12 @@ def render_doctor_pattern_analysis():
         _render_tab_guide("CC0 vs CCMod", *DOCTOR_PATTERN_TAB_GUIDES["CC0 vs CCMod"])
         _render_variable_glossary(expanded=False, key_suffix="cc0_vs_ccmod")
         gap=res['cc0_vs_ccmod']; st.dataframe(view_df(gap), use_container_width=True)
+        st.subheader("Missing upfront evidence dataset")
+        st.caption("Concrete verification table: every row shows a matched order/category where CCMod 1 contains the request but the CC0 case-specific instruction does not. Use source rows and exact CC0/CCMod text to audit each flag.")
+        missing_evidence = res.get('missing_upfront_evidence', pd.DataFrame())
+        st.dataframe(view_df(missing_evidence), use_container_width=True)
+        if not missing_evidence.empty:
+            st.download_button("Download missing-upfront evidence CSV", missing_evidence.to_csv(index=False).encode('utf-8'), file_name="missing_upfront_evidence.csv", mime='text/csv')
         if not gap.empty:
             st.plotly_chart(px.bar(gap, x='category', y=['present_upfront','preference_only','missing_upfront','late_emerging'], title='CC0 vs CCMod gap', barmode='stack'), use_container_width=True)
             min_flow=st.slider('Minimum Sankey frequency', 1, 25, 3)
@@ -322,7 +332,7 @@ def render_doctor_pattern_analysis():
             st.dataframe(view_df(res['ccmod_cleaned'][res['ccmod_cleaned']['ccmod_order_key'].astype(str)==sel]), use_container_width=True)
     with tabs[6]:
         _render_tab_guide("Detailed Data", *DOCTOR_PATTERN_TAB_GUIDES["Detailed Data"])
-        for name,key in [("Cleaned CC0",'cc0_cleaned'),("Cleaned CCMod",'ccmod_cleaned'),("Matched order-level",'order_summary'),("Category-level",'category_rows'),("Sequence-level",'order_sequences'),("Changed decisions",'changed_decisions'),("Unmatched records",'unmatched_orders')]:
+        for name,key in [("Cleaned CC0",'cc0_cleaned'),("Cleaned CCMod",'ccmod_cleaned'),("Matched order-level",'order_summary'),("Category-level",'category_rows'),("Sequence-level",'order_sequences'),("Missing upfront evidence",'missing_upfront_evidence'),("Changed decisions",'changed_decisions'),("Unmatched records",'unmatched_orders')]:
             with st.expander(name):
                 st.dataframe(view_df(res[key]), use_container_width=True)
                 st.download_button(f"Download {name} CSV", res[key].to_csv(index=False).encode('utf-8'), file_name=f"{key}.csv", mime='text/csv')
