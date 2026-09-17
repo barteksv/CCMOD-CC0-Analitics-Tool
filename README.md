@@ -1,5 +1,9 @@
 # Streamlit Application for CCMod and CC0 Analysis
 
+> **Dokumentacja dla administratora:** pełna polska instrukcja instalacji,
+> obsługi, utrzymania, interpretacji raportów i rozwiązywania problemów znajduje
+> się w pliku [ADMIN_MANUAL_PL.md](ADMIN_MANUAL_PL.md).
+
 This project provides a Streamlit web application that analyses Invisalign doctor comments (CCMod) and initial treatment instructions (CC0) from Excel files. It mirrors the analytical logic developed in our conversation, including cleaning, topic classification, complexity assessment and report generation.
 
 ## Features
