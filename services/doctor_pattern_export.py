@@ -1,7 +1,6 @@
 """Excel export helpers for Doctor Pattern Analysis."""
 from __future__ import annotations
 import io
-import math
 from typing import Dict
 import pandas as pd
 
@@ -43,15 +42,6 @@ def _safe_df(df):
         out[c]=out[c].map(lambda x: ", ".join(map(str,x)) if isinstance(x,list) else (str(x) if isinstance(x,dict) else x))
     return out
 
-
-def _column_width(series: pd.Series, minimum: int = 12, maximum: int = 60) -> int:
-    """Return a bounded Excel width, including for columns containing only nulls."""
-    lengths = series.dropna().astype(str).str.len()
-    percentile = lengths.quantile(.9) if not lengths.empty else minimum - 2
-    if pd.isna(percentile) or not math.isfinite(float(percentile)):
-        percentile = minimum - 2
-    return min(maximum, max(minimum, int(percentile) + 2))
-
 def build_doctor_pattern_excel(result: Dict[str,pd.DataFrame]) -> bytes:
     buf=io.BytesIO()
     with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
@@ -76,10 +66,9 @@ def build_doctor_pattern_excel(result: Dict[str,pd.DataFrame]) -> bytes:
             ws.freeze_panes(1,0); ws.autofilter(0,0,max(len(df),1),max(len(df.columns)-1,0))
             for idx,col in enumerate(df.columns):
                 ws.write(0,idx,col,header)
-                width = _column_width(df.iloc[:, idx])
-                column_name = str(col).lower()
-                ws.set_column(idx,idx,width, wrap if any(k in column_name for k in ['comment','instruction','sequence','text','evidence','issue']) else None)
-                if 'pct' in column_name or 'percentage' in column_name or 'rate' in column_name: ws.set_column(idx,idx,14,pct)
+                width=min(max(12, min(60, int(df[col].astype(str).str.len().quantile(.9) if len(df) else 12)+2)),60)
+                ws.set_column(idx,idx,width, wrap if any(k in col.lower() for k in ['comment','instruction','sequence','text','evidence','issue']) else None)
+                if 'pct' in col.lower() or 'percentage' in col.lower() or 'rate' in col.lower(): ws.set_column(idx,idx,14,pct)
     return buf.getvalue()
 
 
@@ -99,7 +88,7 @@ def build_missing_upfront_evidence_excel(missing_upfront_evidence: pd.DataFrame)
         ws.autofilter(0, 0, max(len(df), 1), max(len(df.columns) - 1, 0))
         for idx, col in enumerate(df.columns):
             ws.write(0, idx, col, header)
-            width = _column_width(df.iloc[:, idx])
-            use_wrap = any(k in str(col).lower() for k in ['comment', 'instruction', 'text', 'evidence', 'rule'])
+            width = min(max(12, min(60, int(df[col].astype(str).str.len().quantile(.9) if len(df) else 12) + 2)), 60)
+            use_wrap = any(k in col.lower() for k in ['comment', 'instruction', 'text', 'evidence', 'rule'])
             ws.set_column(idx, idx, width, wrap if use_wrap else None)
     return buf.getvalue()
