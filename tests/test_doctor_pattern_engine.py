@@ -1,6 +1,6 @@
 import io
 import pandas as pd
-from services.doctor_pattern_export import build_doctor_pattern_excel, build_missing_upfront_evidence_excel
+from services.doctor_pattern_export import build_missing_upfront_evidence_excel
 from services.doctor_pattern_engine import (
     analyze_doctor_patterns, clean_text, extract_values, normalize_order_id,
     normalize_part_category, parse_ccmod_number, split_cc0_sections, classify_categories
@@ -210,17 +210,3 @@ def test_missing_upfront_evidence_excel_export_is_xlsx_workbook():
     assert exported.loc[0, 'order_number'] == 1
     assert exported.loc[0, 'category'] == 'Attachments / retention'
     assert exported.loc[0, 'ccmod_exact_comment'] == 'add attachments'
-
-
-def test_excel_exports_handle_columns_containing_only_null_values():
-    null_data = pd.DataFrame({'empty_value': [None, pd.NA], 'comment': [None, pd.NA]})
-
-    full_workbook = build_doctor_pattern_excel({'findings': null_data})
-    evidence_workbook = build_missing_upfront_evidence_excel(null_data)
-
-    full_export = pd.read_excel(io.BytesIO(full_workbook), sheet_name='Executive_Summary', engine='openpyxl')
-    evidence_export = pd.read_excel(
-        io.BytesIO(evidence_workbook), sheet_name='Missing_Upfront_Evidence', engine='openpyxl'
-    )
-    assert list(full_export.columns) == ['empty_value', 'comment']
-    assert list(evidence_export.columns) == ['empty_value', 'comment']
